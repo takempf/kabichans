@@ -162,11 +162,11 @@ button svg {
   position: absolute;
   top: 0;
   left: 0;
-  min-width: 34px;
-  min-height: 28px;
-  padding: 3px 8px 5px;
+  min-width: 36px;
+  min-height: 30px;
+  padding: 4px 10px 6px;
   border: 2px solid #526b59;
-  border-radius: 9px;
+  border-radius: 11px;
   background: #fff5db;
   color: #405747;
   font-size: 16px;
@@ -178,8 +178,17 @@ button svg {
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
-  /* The world updates this transform every frame to follow the speaker. */
-  transition: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform-origin: 50% 100%;
+  transition:
+    width 250ms cubic-bezier(0.2, 0, 0, 1),
+    height 250ms cubic-bezier(0.2, 0, 0, 1),
+    padding 250ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+  will-change: transform, opacity, width, height;
 }
 .speech-bubble::after {
   content: '';
@@ -195,9 +204,39 @@ button svg {
 }
 .speech-bubble.is-expanded {
   width: max-content;
-  max-width: min(190px, calc(100vw - 56px));
-  padding: 8px 10px;
+  max-width: min(230px, calc(100vw - 56px));
+  padding: 9px 13px;
   font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: normal;
+}
+.speech-bubble-text {
+  display: block;
+  pointer-events: none;
+  width: max-content;
+  max-width: calc(min(230px, calc(100vw - 56px)) - 26px);
+  margin: 0 auto;
+  white-space: normal;
+}
+.speech-bubble-text.is-swapping {
+  animation: speech-text-swap 200ms ease-out both;
+}
+@keyframes speech-text-swap {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .speech-bubble {
+    transition: none;
+  }
+  .speech-bubble-text.is-swapping {
+    animation: none;
+  }
 }
 .speech-bubble:hover,
 .speech-bubble:focus-visible {

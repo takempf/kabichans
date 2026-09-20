@@ -166,7 +166,12 @@ export class CatWorld {
     this.emotes = new EmoteMarks(host)
     this.speech = new SpeechBubbles(host, (id) => {
       this.simulation.toggleDialogue(id)
-      this.speech.update(this.simulation.cats, this.camera, this.bend)
+      this.speech.update(
+        this.simulation.cats,
+        this.camera,
+        this.bend,
+        this.options.reducedMotion,
+      )
     })
     this.sun.position.set(-15, 30, 20)
     this.scene.add(this.sun, this.ambient)
@@ -923,7 +928,12 @@ export class CatWorld {
       this.simulation.getCarriedItems(),
     )
     this.emotes.update(this.simulation.cats, this.camera, this.bend)
-    this.speech.update(this.simulation.cats, this.camera, this.bend)
+    this.speech.update(
+      this.simulation.cats,
+      this.camera,
+      this.bend,
+      this.options.reducedMotion,
+    )
     this.selection.visible = selected !== null && !isHidden(selected)
     if (selected)
       this.selection.position.set(
