@@ -1,66 +1,37 @@
 # Kabichans
 
-A cozy, interactive 3D meadow with 100 tabby-and-white cat villagers. Built with React, TypeScript, Vite, and Three.js.
+A cozy, interactive 3D meadow with 100 tabby-and-white cat villagers living their little lives. Built with React, TypeScript, Vite, and Three.js.
 
-## Run locally
+## Getting Started
 
-Requires Node.js 22.12 or newer and a browser with WebGL 2.
+### Prerequisites
+
+- Node.js 22.12 or newer
+- Modern browser with WebGL 2 support
+
+### Run Locally
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite (normally http://127.0.0.1:5173). If that port is already busy, Vite chooses the next available port.
+Open the local URL printed in your terminal (typically `http://127.0.0.1:5173`).
 
-## Explore
+## Controls & Interaction
 
-- **Drag / WASD / arrow keys:** move around the meadow.
-- **Scroll / + / −:** zoom in and out.
-- **Click a cat:** see their name, personality, and current intention, including who they are going to visit.
-- **Speech bubbles:** most conversations show `...`; about one in five is readable automatically. Click or tap a bubble to listen to the whole exchange as speakers take turns, then click again to hide it. Selecting a talking cat also reveals their conversation. Each turn lasts 7 simulation seconds for visiting pairs, or 6–10 seconds in groups. Bubbles appear directly above the speaker's head and support keyboard focus and Enter/Space.
-- **Follow this little friend:** keep the camera with the selected cat. Dragging or resetting the camera stops following.
-- **100 cats:** open the searchable resident directory and jump to a neighbor.
-- **Drop a treat:** scatter a handful near the center of the camera view. Nearby cats notice, a "!" over their heads, and come over. Each kneels, picks up a piece, and eats it, then wanders off with a 😋. Uneaten pieces disappear after 18 simulation seconds. Dropping a treat resumes a paused simulation.
-- **Pause / speed:** freeze the simulation or cycle through 1×, 2×, and 0.5× speed.
-- **Clock:** cycle between afternoon, golden hour, and evening lighting.
-- **Settings:** adjust barrel curvature and reduce bobbing and camera motion.
-- **Map:** see every resident's live location; click to move the camera. The compact map is hidden on smaller screens.
+- **Navigate**: Click & drag, WASD, or arrow keys to pan around the meadow. Scroll or use `+` / `-` to zoom.
+- **Interact**: Click any cat to inspect their personality, current activity, and thoughts. Click "Follow" to track them.
+- **Treats**: Scatter treats across the meadow and watch nearby cats gather to eat.
+- **Resident Directory**: Search and jump to any of the 100 villagers.
+- **World Controls**: Toggle time of day (Afternoon, Golden Hour, Evening), simulation speed (0.5×, 1×, 2×), and camera curvature settings.
 
-## Development
+## Scripts
 
-```sh
-npm run check          # ESLint, simulation tests, TypeScript, production build
-npm run format         # Prettier
-npm run format:check
-npx playwright install chromium  # Once, for browser tests
-npm run test:e2e       # Build and test the production app on desktop and mobile
-npm run preview        # Serve the production build locally
-```
-
-The browser tests start a preview server on port 4173. They exercise selection, following, pause, treats, time of day, curvature, the resident directory, and mobile layout. Screenshots are saved under `test-results/`.
-
-## How it works
-
-- `src/world/simulation.ts` is a seeded simulation independent of React and Three.js. All 100 residents have their own state. They wander, sit, lie down, doze, socialize, seek treats, and occasionally vomit. A cat who realizes they're about to be sick, spots a treat, or notices a butterfly gets a "!" over their head (`src/world/emotes.ts`). They freeze for a moment before acting on it, some cats quicker than others. Vomiting has a short recovery period and a cooldown; the 50 most recent puddles stay in the meadow until the session resets. Spawn positions and movement enforce each cat's clearance, with extra space reserved before lying down or retching. Cats finish standing up before moving. Steering eases velocity and slows near destinations; tiny avoidance forces settle instead of reversing at full speed. Turns have bounded speed and acceleration, including social turns and turnarounds. Blocked cats yield before planning a detour, retaining their original intention. Swept movement checks keep faster cats clear of neighbors and scenery.
-- Each resident has a staggered, rolling schedule of exploring, napping, and visiting, with two familiar friends and three remembered resting places. A trip to a resting place always ends in a nap, lying down if there's room, and cats often doze off wherever else they settle too. Once asleep, they stay asleep for a minute and a half to two and a half minutes, and roughly 30 of the 100 residents are asleep at any moment, from the start of a session. Appointments are flexible simulation-time routines, separate from the lighting presets. A visit follows a specific resident across the meadow; an available friend comes to meet them, pauses their own errand, and takes turns chatting before resuming it. Busy or sleeping friends can keep their plans, and unsuccessful visits eventually end. Treats temporarily interrupt an errand, which resumes afterward. A dropped treat scatters one piece per invited cat in rings around where it lands, spaced so neighbors can kneel shoulder to shoulder. Cats within walking distance catch on in their own moment: farther cats notice later, and the creek is too far. Pieces are first come, first served. Arriving cats head for a free piece, filling the rings from the middle, and change their mind if someone closer gets there first or the crowd walls them off. Each cat eats at their own pace and heads off soon after, so the crowd thins out gradually. Queasy cats prioritize running to a quiet spot, reconsider it if company arrives, then vomit and recover before returning to their routine.
-- The meadow cafe (`src/world/cafe.ts`) is a kiosk with three tables of three stools each. Every so often a nearby resident gets a craving and trots over. Cats join the line when they reach it, in the order they arrive. The line shuffles forward, and cats sit while they wait. The barista serves only the cat at the counter, in a short conversation: the customer agonizes over the only two treats (a Cat Can or a Churu) or asks how much they can have, and the barista plays along. Once served, the cat carries the tray to a free stool, or to the lawn just past the patio if the stools are full, and enjoys it. Stools are solid for everyone else. A diner stops just outside their stool, turns toward the table, hops up in a small arc and sits; afterwards they turn around and hop back down. Servers clear the empty dishes afterwards. Three cats staff the kiosk, wearing a green apron and cap. Every couple of minutes a neighbor comes to relieve the longest-serving worker, who hangs up the apron and goes back to meadow life. Only one worker takes a break at a time, so at least two are always working. Staff use the kiosk's open west end, where they squeeze past each other behind the narrow counter; everyone else is kept out of it. Loungers leave the patio and the line to customers. Cafe choices use their own seeded random stream.
-- `src/world/navigation.ts` plans and retains routes around cottages and trees using a small A* grid with smoothed segments. Sustained obstructions trigger a detour around residents, rather than a new random destination. Walking, trotting, and sprinting have base speeds of 1.25, 2.35, and 4.1 world units per second, with individual pace variation. Visits usually prompt a trot; privacy and some treat trips prompt a sprint. Cats ease into motion, slow for turns and arrival, and animate according to the speed they actually achieve.
-- `src/world/butterflies.ts` flies ten pastel butterflies around the flower patches. They meander, sometimes drift to another patch, and land on flowers to bask. Every so often one tempts a nearby cat who is exploring or at loose ends. The cat follows at a polite distance, usually breaks into a trot and then a sprint, and bats at it with both paws. A butterfly that feels a cat coming climbs above the reach of even the tallest cat, so it is never caught. After a while, or when it flutters over the creek, a cottage, or the cafe, the cat sits and watches it go, then resumes whatever it was doing. Chases use their own seeded random stream. `src/world/butterflyRenderer.ts` draws the flapping wings, bodies, and fading shadows as instanced meshes. At night the butterflies become fireflies, which cats chase just the same, joined by forty more that drift about the meadow. Each firefly flashes on its own rhythm; gentler motion swaps the flashes for a slow, steady pulse.
-- `src/world/cats.ts` constructs the villagers with broad, smooth heads, tall tapered ears, and simple rounded bodies. Eyes, nose, mouth, whiskers, and inner-ear colors are flat texture artwork, with no protruding facial geometry. Each body part is instanced across the population. Walking, trotting, and sprinting blend stride length, cadence, bounce, and a gentle forward lean. Seated and lying poses, kneeling to eat a treat held up in both paws, retching, and tail sway are driven by simulation time. Head gaze follows a critically damped spring. Switching attention between speakers, friends, butterflies, and the path ahead eases in and out without snapping, and rhythmic gestures such as nods are layered on top. The face atlas supports awake, asleep, and queasy expressions. Droplets and persistent puddles are instanced too; gentler motion suppresses retching pulses and droplets while preserving the behavior and its puddle.
-- Wandering favors shady edges beneath trees, the sides and backs of cottages, and scattered open clearings. Destinations account for nearby cats and incoming visitors, favoring a little company and losing appeal as they fill up. Cats choose reachable spots, keep doorways and paths open, and often sit or lie down for a while after arriving. Some wandering remains exploratory, and social visits and conversations avoid crowded pockets.
-- `src/world/catArtwork.ts` shares the tabby cap, white blaze, green eyes, and freckled pink nose between the model textures and resident portraits.
-- Conversations are rare, coordinated gatherings of two to five nearby, awake residents. They walk into an open circle, wait for everyone, then take turns speaking for 44–68 simulation seconds before dispersing. Speakers get a small bubble and gentle paw gestures; listeners nod. The first invitation is attempted after 60–100 seconds, with a 90–150 second break after each gathering. Treats can interrupt a group, and blocked approaches time out safely. Turns and gestures blend smoothly; gentler motion keeps speech readable while suppressing nodding.
-- `src/world/dialogue.ts` supplies 168 short lines, 24 each across mommy’s love, food, vomiting strategy, lounging, Churu, meadow gossip, and the cafe. Some come as a call and its answer, always spoken together and in order. Each group or visiting pair shares a topic, with a fresh line on every speaker turn. A shared dialogue memory keeps the meadow from repeating itself. Each topic deals from a shuffled deck, so every line gets a turn before any comes back, in a new order each time. Lines heard in the topic's last half wait at the back when the deck reshuffles. A new conversation skips the three most recent topics. Counter orders draw from 22 routines, and the next eight customers never repeat one. Each treat has six final orders, and the barista has several lines for preparing and serving. A separate seeded random stream keeps dialogue choices independent of movement. About 20% of exchanges display words automatically; revealing an exchange persists until it ends. `src/world/speech.ts` anchors reusable, accessible speech buttons to the current speaker, accounting for camera projection, terrain curvature, bridge height, and viewport edges.
-- `src/world/materials.ts` generates the face atlas, painted ear and grass textures. These use nearest texel sampling with smooth blending between mip levels for a crisp, lightly pixelated look. Face islands are 256px each, with independently downsampled mip levels stopping at one texel per island to prevent expression bleeding. A mild negative mip bias preserves eye detail at 480p; stronger eye and mouth strokes also carry into resident portraits. Shadows and sky retain smooth filtering. A shared vertex deformation bends the entire world away from the camera: `y -= curvature * (z - cameraFocusZ)²`. The bend follows the camera as you explore.
-- `src/world/scenery.ts` creates the meadow, trees, flower patches, paths, creek, and bridge, plus two big boulders and three picnic blankets on the east bank. West-bank cats occasionally trek over the bridge to sit on a blanket for a while; east-bank residents lounge beside the rocks and on the blankets.
-- `src/world/nightLights.ts` lights the meadow after dark: lamp posts along the path, beside the cafe patio, and at both ends of the bridge, paper lanterns under the kiosk canopy, and a flickering candle on every cafe table. Occupied cottages' windows glow brighter at night and spill light onto the lawn. Every light stays in the scene and is simply dark by day, so switching the time never recompiles shaders; lights follow the bent ground so their pools stay beneath them. Lamp positions live in `src/world/geography.ts`, and cats walk around the posts.
-- The three cottages are sized for cats: 7 × 5.2 walls with a 2 × 3 front door, about three cats tall at the roof peak. Three overlapping circles hug each cottage's walls for navigation. Every so often a small group of one to three residents who are exploring or at loose ends walks over to a cottage. They wait in single file beside the door, then go in one at a time and are out of sight. Up to four residents fit, counting those on their way in. After at least 30 seconds, small groups head back out, longest visitors first, and they need not be the same cats who came in together. Coming and going take turns, and a leaving resident waits inside until a spot outside the door is clear. The door swings open for each passage, and the windows glow while anyone is home. A resident gives up after 45 seconds at a jammed door, and waits a few minutes before visiting again. Anything they were doing beforehand resumes when they come back out. The layout lives in `src/world/cottageLayout.ts` and the models in `src/world/cottageRenderer.ts`. Trips use their own seeded random stream.
-- `src/world/fence.ts` marks the actual roaming boundary with a low timber fence, sage caps, and closed path gates. Rendering, navigation, spawning, and the map share its fixed perimeter; cat footprints stay inside the post footings. Both banks are accessible, with creek crossings routed over the wooden bridge. The entire fence uses two static instanced draws and follows the curved terrain.
-- `src/world/dithering.ts` applies PSX-style ordered dithering to the completed scene, using a fixed 4×4 Bayer pattern and 5-bit color channels. One framebuffer copy and one fullscreen triangle preserve the existing lighting and colors, including the sky. The pattern follows the capped render resolution and stays still when the scene is paused; the HTML interface stays crisp.
-- `src/world/World.ts` owns rendering, lighting, camera controls, selection, and resource cleanup. The 3D scene renders at a maximum of 480 pixels tall, preserving the viewport's aspect ratio, with pixelated scaling and no antialiasing. The interface stays at native resolution. A gentle distance fog picks up the current sky colors while keeping the foreground clear. The default camera is pulled back and elevated to show more meadow, with subtle barrel curvature; resetting the camera restores that framing.
-- `src/App.tsx` provides the responsive interface and accessible modal controls.
-
-The visual direction draws on the supplied cat photos: gray tabby cap and stripes, white blaze, muzzle and paws, green eyes, and a pink nose. The characters use oversized heads, short limbs, pastel clothing, and soft painted surfaces inspired by cozy life-simulation games. These are original procedural models, not imported game assets or a reproduction of a game's production models and animation rig.
-
-This is a local, single-player sandbox. Refreshing starts a new session with the same initial seed. Time of day is a lighting preset, not a real-time clock. Contact shadows are soft procedural decals. Cat navigation combines grid routes around scenery, local steering, and firm circular collision bounds; resting and vomiting reserve a larger footprint. All geometry and textures are generated locally; the interface optionally loads Google Fonts and has system-font fallbacks.
+- `npm run dev`: Start the local Vite development server
+- `npm run build`: Typecheck and produce an optimized production build in `dist/`
+- `npm run preview`: Preview the production build locally
+- `npm run check`: Run linter, unit tests, and build check
+- `npm run test`: Run Vitest simulation test suite
+- `npm run test:e2e`: Run Playwright end-to-end browser tests
+- `npm run format`: Format code with Prettier
