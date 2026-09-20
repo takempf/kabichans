@@ -47,6 +47,7 @@ export interface CafeWorkerCarriedItem {
 
 export const CAFE_TERRACE_CENTER = { x: -11.0, z: 1.5 } as const
 export const CAFE_TERRACE_RADIUS = 9.4
+export const PATIO_HEIGHT = 0.08
 export const CAFE_COUNTER_POSITION = { x: -14.2, z: 0.9 } as const
 export const CAFE_BARISTA_STATION = { x: -14.2, z: 0.9, heading: 0 } as const
 export const CAFE_SERVER_STATIONS = [

@@ -22,6 +22,7 @@ import type { Butterfly, Cat, Point, Puddle } from './simulation'
 import { CAT_COLORS, CAT_FACE_EXPRESSIONS } from './catArtwork'
 import { groundHeight } from './terrain'
 import { tailGeometry, tailMaterial, tailMood } from './tails'
+import { isOnCafeTerrace, PATIO_HEIGHT } from './cafeLayout'
 
 type PartKind =
   'body' | 'head' | 'armL' | 'armR' | 'legL' | 'legR' | 'tail' | 'shadow'
@@ -310,7 +311,7 @@ export class CatRenderer {
       this.tailSpeeds[cat.id] = mood.speed
     })
     this.add(tail, tailMaterial(bend), 'tail')
-    this.add(
+    const shadowMesh = this.add(
       new THREE.PlaneGeometry(2.3, 1.65).rotateX(-Math.PI / 2),
       bendMaterial(
         new THREE.MeshBasicMaterial({
@@ -322,6 +323,7 @@ export class CatRenderer {
       ),
       'shadow',
     )
+    shadowMesh.renderOrder = 2
     const vomitMaterial = material('#aca267')
     this.droplets = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.045, 6, 4),
@@ -338,6 +340,7 @@ export class CatRenderer {
       vomitMaterial,
       MAX_PUDDLES,
     )
+    this.puddles.renderOrder = 2
     spot.dispose()
     this.morsels = new THREE.InstancedMesh(
       treatGeometry(),
@@ -666,10 +669,27 @@ export class CatRenderer {
       )
 
       for (const part of this.parts) {
+        const kind = part.kind
+        if (kind === 'shadow') {
+          const onTerrace = isOnCafeTerrace(cat.x, cat.z)
+          const groundY = onTerrace
+            ? PATIO_HEIGHT + 0.03
+            : groundHeight(cat.x, cat.z) + 0.025
+          const shadowScale = isHidden(cat) ? 0 : cat.scale
+          this.local.position.set(cat.x, groundY, cat.z)
+          this.local.rotation.set(0, cat.heading, 0)
+          this.local.scale.set(
+            shadowScale * (1 + 0.15 * lying),
+            1,
+            shadowScale * (1 + 0.3 * lying),
+          )
+          this.local.updateMatrix()
+          part.mesh.setMatrixAt(cat.id, this.local.matrix)
+          continue
+        }
         this.local.position.set(0, 0, 0)
         this.local.rotation.set(0, 0, 0)
         this.local.scale.set(1, 1, 1)
-        const kind = part.kind
         if (kind === 'head') {
           this.local.position.set(
             0,
@@ -780,9 +800,6 @@ export class CatRenderer {
             -0.18 - 0.36 * lying,
           )
           this.local.scale.y = 1 - 0.35 * sitting - 0.75 * lying
-        } else if (kind === 'shadow') {
-          this.local.position.y = 0.025 - bob
-          this.local.scale.set(1 + 0.15 * lying, 1, 1 + 0.3 * lying)
         }
         if (part.uniform && !onShift) this.local.scale.setScalar(0)
         this.local.updateMatrix()
@@ -850,11 +867,10 @@ export class CatRenderer {
       const puddle = puddles[i]
       const age = time - puddle.createdAt
       const size = puddle.scale * THREE.MathUtils.clamp(age * 5, 0, 1)
-      this.local.position.set(
-        puddle.x,
-        groundHeight(puddle.x, puddle.z) + 0.035,
-        puddle.z,
-      )
+      const groundY = isOnCafeTerrace(puddle.x, puddle.z)
+        ? PATIO_HEIGHT + 0.003
+        : groundHeight(puddle.x, puddle.z) + 0.035
+      this.local.position.set(puddle.x, groundY, puddle.z)
       this.local.rotation.set(0, puddle.heading, 0)
       this.local.scale.setScalar(size)
       this.local.updateMatrix()

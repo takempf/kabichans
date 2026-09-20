@@ -8,6 +8,7 @@ import {
   CAFE_TABLES,
   CAFE_TERRACE_CENTER,
   CAFE_TERRACE_RADIUS,
+  PATIO_HEIGHT,
   STOOL_CUSHION_HEIGHT,
   TABLE_SURFACE_HEIGHT,
 } from './cafeLayout'
@@ -20,7 +21,6 @@ import type {
 
 export * from './cafeLayout'
 
-const PATIO_HEIGHT = 0.08
 const CARRIED_ITEM_OFFSET_FORWARD = 0.55
 const CARRIED_ITEM_OFFSET_Y = 1.05
 
@@ -32,11 +32,11 @@ function createCafeSignTexture(): THREE.CanvasTexture {
     ctx.lineWidth = 14
     ctx.strokeRect(10, 10, 492, 236)
     ctx.fillStyle = '#fff6e5'
-    ctx.font = 'bold 56px sans-serif'
+    ctx.font = "bold 56px 'Geist Variable', 'Geist'"
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillText('KABI CAFE', 256, 88)
-    ctx.font = '32px sans-serif'
+    ctx.font = "32px 'Geist Variable', 'Geist'"
     ctx.fillStyle = '#f8b195'
     ctx.fillText('Fresh Cans ~ Churu Lounge', 256, 160)
     ctx.fillStyle = '#ffd166'
@@ -112,7 +112,14 @@ function createMeshAdder(
   }
 }
 
-type ShadowAdder = (x: number, z: number, sx: number, sz: number) => void
+type ShadowAdder = (
+  x: number,
+  z: number,
+  sx: number,
+  sz: number,
+  y?: number,
+  renderOrder?: number,
+) => void
 
 function createShadowAdder(
   bend: BendUniforms,
@@ -128,10 +135,18 @@ function createShadowAdder(
     bend,
   )
   const shadowGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2)
-  return (x: number, z: number, sx: number, sz: number): void => {
+  return (
+    x: number,
+    z: number,
+    sx: number,
+    sz: number,
+    y = 0.032,
+    renderOrder = 0,
+  ): void => {
     const mesh = new THREE.Mesh(shadowGeo, shadowMat)
-    mesh.position.set(x, 0.032, z)
+    mesh.position.set(x, y, z)
     mesh.scale.set(sx, 1, sz)
+    mesh.renderOrder = renderOrder
     mesh.frustumCulled = false
     group.add(mesh)
   }
@@ -292,7 +307,14 @@ function buildKioskStructure(
   const kioskGroup = new THREE.Group()
   kioskGroup.position.set(CAFE_COUNTER_POSITION.x, 0, CAFE_COUNTER_POSITION.z)
   group.add(kioskGroup)
-  addShadow(CAFE_COUNTER_POSITION.x, CAFE_COUNTER_POSITION.z + 0.5, 10.5, 7.5)
+  addShadow(
+    CAFE_COUNTER_POSITION.x,
+    CAFE_COUNTER_POSITION.z + 0.5,
+    10.5,
+    7.5,
+    PATIO_HEIGHT + 0.003,
+    2,
+  )
   addMesh(
     new THREE.BoxGeometry(8.2, 1.4, 0.8),
     '#b0845a',
@@ -497,7 +519,7 @@ function buildOutdoorTable(
   const tableGroup = new THREE.Group()
   tableGroup.position.set(table.x, 0, table.z)
   group.add(tableGroup)
-  addShadow(table.x, table.z, 4.8, 4.8)
+  addShadow(table.x, table.z, 4.8, 4.8, PATIO_HEIGHT + 0.003, 2)
   addMesh(
     new THREE.CylinderGeometry(table.radius, table.radius, 0.12, 30),
     '#dfc199',
@@ -528,15 +550,16 @@ function buildOutdoorTable(
     tableGroup,
     0.6,
   )
-  addMesh(
-    new THREE.CylinderGeometry(0.85, 0.95, 0.1, 22),
+  const base = addMesh(
+    new THREE.CylinderGeometry(0.85, 0.95, 0.12, 24),
     '#383332',
     0,
-    0.05,
+    PATIO_HEIGHT + 0.02,
     0,
     tableGroup,
     0.6,
   )
+  base.renderOrder = 2
   buildTableVase(addMesh, tableGroup)
   buildTableStools(table, addMesh, addShadow, group)
 }
@@ -580,7 +603,7 @@ function buildTableStools(
     const stoolGroup = new THREE.Group()
     stoolGroup.position.set(seat.x, 0, seat.z)
     group.add(stoolGroup)
-    addShadow(seat.x, seat.z, 2.4, 2.4)
+    addShadow(seat.x, seat.z, 2.4, 2.4, PATIO_HEIGHT + 0.003, 2)
     const color = colors[(table.id * 3 + seatIdx) % colors.length]
     addMesh(
       new THREE.CylinderGeometry(0.72, 0.72, 0.16, 24),
@@ -629,7 +652,7 @@ function buildBreakBench(
   benchGroup.position.set(CAFE_BREAK_BENCH.x, 0, -3.8)
   benchGroup.rotation.y = CAFE_BREAK_BENCH.heading
   group.add(benchGroup)
-  addShadow(CAFE_BREAK_BENCH.x, -3.8, 4.2, 2.2)
+  addShadow(CAFE_BREAK_BENCH.x, -3.8, 4.2, 2.2, PATIO_HEIGHT + 0.003, 2)
   addMesh(
     new THREE.BoxGeometry(3.4, 0.16, 1.1),
     '#875b3c',

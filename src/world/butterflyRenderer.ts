@@ -6,6 +6,7 @@ import type { Butterfly } from './butterflies'
 import { groundHeight } from './terrain'
 import { WORLD } from './geography'
 import { randomSeed } from './simulation'
+import { isOnCafeTerrace, PATIO_HEIGHT } from './cafeLayout'
 
 // After dark the butterflies become fireflies, joined by a few dozen more that
 // just drift about the meadow. Every one blinks on its own rhythm.
@@ -113,6 +114,7 @@ export class ButterflyRenderer {
       ),
       BUTTERFLY_COUNT,
     )
+    this.shadows.renderOrder = 2
     const glowGeometry = new THREE.SphereGeometry(1, 8, 6)
     this.glows = new THREE.InstancedMesh(
       glowGeometry,
@@ -198,7 +200,9 @@ export class ButterflyRenderer {
 
   update(butterflies: Butterfly[], time: number, reducedMotion: boolean) {
     for (const butterfly of butterflies) {
-      const ground = groundHeight(butterfly.x, butterfly.z)
+      const ground = isOnCafeTerrace(butterfly.x, butterfly.z)
+        ? PATIO_HEIGHT
+        : groundHeight(butterfly.x, butterfly.z)
       const perched = butterfly.perched > 0
       const beat = Math.sin(butterfly.flap)
       // Wings clap together above the back in flight. Perched, they stay mostly
