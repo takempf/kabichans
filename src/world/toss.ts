@@ -45,12 +45,7 @@ export function unprojectGround(
   raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
   const { origin, direction } = raycaster.ray
 
-  const target = solveGroundIntersection(
-    origin,
-    direction,
-    curvature,
-    focusY,
-  )
+  const target = solveGroundIntersection(origin, direction, curvature, focusY)
 
   return {
     x: THREE.MathUtils.clamp(

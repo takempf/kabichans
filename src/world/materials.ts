@@ -192,7 +192,6 @@ export function earTexture() {
   return texture
 }
 
-
 export function shadowTexture() {
   return canvasTexture(64, 64, (ctx) => {
     const gradient = ctx.createRadialGradient(32, 32, 3, 32, 32, 32)

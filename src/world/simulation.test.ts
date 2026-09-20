@@ -128,7 +128,9 @@ describe('the cat world', { timeout: 60000 }, () => {
     expect(chasers.length).toBeGreaterThan(0)
     simulation.setLaserTarget(null)
     simulation.step(0.1)
-    const afterClear = simulation.cats.filter((c) => c.objective?.kind === 'laser')
+    const afterClear = simulation.cats.filter(
+      (c) => c.objective?.kind === 'laser',
+    )
     expect(afterClear).toHaveLength(0)
   })
 

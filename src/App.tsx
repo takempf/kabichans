@@ -704,9 +704,7 @@ export default function App() {
                   )
                 }
               }}
-              aria-label={
-                holdingTreats ? 'Put treats away' : 'Drop a treat'
-              }
+              aria-label={holdingTreats ? 'Put treats away' : 'Drop a treat'}
             >
               <Cookie size={20} />
               <span>{holdingTreats ? 'Treats in hand' : 'Drop a treat'}</span>
@@ -729,9 +727,7 @@ export default function App() {
                 }
               }}
               aria-label={
-                laserActive
-                  ? 'Turn off laser pointer'
-                  : 'Turn on laser pointer'
+                laserActive ? 'Turn off laser pointer' : 'Turn on laser pointer'
               }
             >
               <Sparkles size={18} />

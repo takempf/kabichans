@@ -165,7 +165,10 @@ function createSubdividedDeckGeometry(
       const z = Math.sin(theta) * rad
       positions.push(x, topY, z)
       normals.push(0, 1, 0)
-      uvs.push(0.5 + 0.5 * frac * Math.cos(theta), 0.5 + 0.5 * frac * Math.sin(theta))
+      uvs.push(
+        0.5 + 0.5 * frac * Math.cos(theta),
+        0.5 + 0.5 * frac * Math.sin(theta),
+      )
     }
   }
 
@@ -216,7 +219,10 @@ function createSubdividedDeckGeometry(
   }
 
   const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(positions, 3),
+  )
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
   geometry.setIndex(indices)

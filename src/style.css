@@ -566,7 +566,9 @@ button svg {
   background: #fbf5e6;
   color: #8b683e;
   border-color: #d7b587;
-  box-shadow: 0 0 0 2px #e8c99e88, 0 2px 8px #d49b6a33;
+  box-shadow:
+    0 0 0 2px #e8c99e88,
+    0 2px 8px #d49b6a33;
 }
 .treat-button.is-active > svg:first-child {
   color: #cf8d45;
@@ -673,7 +675,9 @@ button svg {
   background: #ffebee;
   color: #b71c1c;
   border-color: #ef9a9a;
-  box-shadow: 0 0 0 2px #ef9a9a66, 0 2px 8px #ff174433;
+  box-shadow:
+    0 0 0 2px #ef9a9a66,
+    0 2px 8px #ff174433;
 }
 .laser-button.is-active > svg {
   color: #ff1744;

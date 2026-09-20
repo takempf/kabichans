@@ -1,11 +1,7 @@
 import * as THREE from 'three'
 import { createCafeScenery } from './cafe'
 import { createBoundaryFence } from './fence'
-import {
-  bendMaterial,
-  canvasTexture,
-  shadowTexture,
-} from './materials'
+import { bendMaterial, canvasTexture, shadowTexture } from './materials'
 import type { BendUniforms } from './materials'
 import { createGrassMaterial } from './grassMaterial'
 import { houses, randomSeed, trees } from './simulation'
