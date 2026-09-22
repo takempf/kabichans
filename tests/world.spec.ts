@@ -135,3 +135,47 @@ test('can hide and reopen the resident spotlight', async ({ page }) => {
   await page.getByRole('button', { name: 'Open resident spotlight' }).click()
   await expect(page.locator('.resident-card')).toBeVisible()
 })
+
+test('treat hand cursor follows pointer and updates aiming state', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await expect(page.locator('[data-testid="world"] canvas')).toBeVisible()
+
+  // Initially cursor element should not be rendered
+  await expect(page.locator('.treat-hand-cursor')).toHaveCount(0)
+
+  // Activate treat mode
+  await page.getByRole('button', { name: 'Drop a treat' }).click()
+  await expect(page.locator('.treat-hand-cursor')).toHaveCount(1)
+
+  const canvas = page.locator('[data-testid="world"] canvas')
+  const box = await canvas.boundingBox()
+  if (box) {
+    // Pointer move should position and display the cursor
+    await page.mouse.move(box.x + 120, box.y + 120)
+    await expect(page.locator('.treat-hand-cursor')).toBeVisible()
+    await expect(page.locator('.treat-hand-badge')).toContainText(
+      'Click & drag to toss',
+    )
+
+    // Aiming state
+    await page.mouse.down()
+    await expect(page.locator('.treat-hand-cursor')).toHaveClass(/is-aiming/)
+    await expect(page.locator('.treat-hand-badge')).toContainText(
+      'Release to toss!',
+    )
+
+    // Move while aiming
+    await page.mouse.move(box.x + 180, box.y + 180, { steps: 3 })
+    await expect(page.locator('.treat-hand-cursor')).toBeVisible()
+
+    // Release to toss
+    await page.mouse.up()
+    await expect(page.locator('.treat-hand-cursor')).toHaveCount(0)
+    await expect(page.getByRole('status')).toContainText('happy paws')
+  }
+  expect(errors).toEqual([])
+})

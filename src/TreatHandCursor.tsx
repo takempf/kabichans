@@ -1,9 +1,9 @@
-import React from 'react'
+import { useEffect, useRef } from 'react'
+import type { CSSProperties, JSX } from 'react'
 
 export interface TreatHandCursorProps {
   readonly active: boolean
   readonly isAiming: boolean
-  readonly position: { readonly x: number; readonly y: number } | null
 }
 
 const CURSOR_OFFSET_X = 18
@@ -13,20 +13,47 @@ const VIEWBOX_SIZE = 64
 export function TreatHandCursor({
   active,
   isAiming,
-  position,
-}: TreatHandCursorProps): React.JSX.Element | null {
-  if (!active || !position) {
+}: TreatHandCursorProps): JSX.Element | null {
+  const cursorRef = useRef<HTMLDivElement>(null)
+  const lastPositionRef = useRef<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (!active) {
+      lastPositionRef.current = null
+      return
+    }
+
+    const handlePointerMove = (e: PointerEvent): void => {
+      lastPositionRef.current = { x: e.clientX, y: e.clientY }
+      const el = cursorRef.current
+      if (el) {
+        el.style.display = ''
+        el.style.transform = `translate3d(${e.clientX + CURSOR_OFFSET_X}px, ${e.clientY + CURSOR_OFFSET_Y}px, 0)`
+      }
+    }
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true })
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+    }
+  }, [active])
+
+  if (!active) {
     return null
   }
 
-  const transformStyle: React.CSSProperties = {
-    transform: `translate3d(${position.x + CURSOR_OFFSET_X}px, ${position.y + CURSOR_OFFSET_Y}px, 0)`,
-  }
+  const lastPos = lastPositionRef.current
+  const initialStyle: CSSProperties = lastPos
+    ? {
+        transform: `translate3d(${lastPos.x + CURSOR_OFFSET_X}px, ${lastPos.y + CURSOR_OFFSET_Y}px, 0)`,
+      }
+    : { display: 'none' }
 
   return (
     <div
+      ref={cursorRef}
       className={`treat-hand-cursor ${isAiming ? 'is-aiming' : ''}`}
-      style={transformStyle}
+      style={initialStyle}
       aria-hidden="true"
     >
       <div className="treat-hand-graphic">
@@ -43,7 +70,7 @@ function TreatHandSvg({
   isAiming,
 }: {
   readonly isAiming: boolean
-}): React.JSX.Element {
+}): JSX.Element {
   return (
     <svg
       width={VIEWBOX_SIZE}

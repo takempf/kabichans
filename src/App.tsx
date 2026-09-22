@@ -405,9 +405,6 @@ export default function App() {
   const [holdingTreats, setHoldingTreats] = useState(false)
   const [isAimingTreats, setIsAimingTreats] = useState(false)
   const [laserActive, setLaserActive] = useState(false)
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(
-    null,
-  )
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   )
@@ -428,6 +425,7 @@ export default function App() {
       )
       w.onHoldingTreatsChange = (holding) => {
         setHoldingTreats(holding)
+        if (!holding) setIsAimingTreats(false)
       }
       w.onAimingChange = (aiming) => {
         setIsAimingTreats(aiming)
@@ -449,21 +447,6 @@ export default function App() {
       clearTimeout(noticeTimer.current)
     }
   }, [stopFollowing, paused])
-
-  useEffect(() => {
-    if (!holdingTreats) {
-      setMousePos(null)
-      setIsAimingTreats(false)
-      return
-    }
-    const handlePointerMove = (e: PointerEvent): void => {
-      setMousePos({ x: e.clientX, y: e.clientY })
-    }
-    window.addEventListener('pointermove', handlePointerMove)
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-    }
-  }, [holdingTreats])
 
   useEffect(() => {
     world.current?.setOptions({
@@ -538,11 +521,7 @@ export default function App() {
           holdingTreats ? 'is-holding-treats' : ''
         } ${laserActive ? 'is-laser-active' : ''}`}
       >
-        <TreatHandCursor
-          active={holdingTreats}
-          isAiming={isAimingTreats}
-          position={mousePos}
-        />
+        <TreatHandCursor active={holdingTreats} isAiming={isAimingTreats} />
         <div ref={host} className="world-canvas" data-testid="world" />
         <div className="world-vignette" />
         {!snapshot && !error && (
