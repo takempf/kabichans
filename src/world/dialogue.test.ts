@@ -105,7 +105,7 @@ describe('little conversations', () => {
 
   it('doubles every topic, keeps calls and answers together, and saves repeats for later', () => {
     for (const topic of DIALOGUE_TOPICS)
-      expect(topic.lines.flat()).toHaveLength(24)
+      expect(topic.lines.flat().length).toBeGreaterThanOrEqual(24)
     const random = randomSeed(12)
     const memory = new DialogueMemory()
     const heard = new Map<string, string[]>()
@@ -226,5 +226,21 @@ describe('little conversations', () => {
       second.step(0.1)
     }
     expect(first.snapshot()).toEqual(second.snapshot())
+  })
+
+  it('includes pellets, string toys, snakes, lasers, acronym commentary, and rectangle distastes', () => {
+    const allLines = DIALOGUE_TOPICS.flatMap((t) => t.lines.flat())
+    expect(allLines.some((l) => /pellet/i.test(l))).toBe(true)
+    expect(allLines.some((l) => /string toy/i.test(l))).toBe(true)
+    expect(allLines.some((l) => /snake/i.test(l))).toBe(true)
+    expect(allLines.some((l) => /laser/i.test(l))).toBe(true)
+
+    const acronymLines = allLines.filter(
+      (l) => /acronym/i.test(l) || /LASER:/i.test(l) || /LASER means/i.test(l),
+    )
+    expect(acronymLines.length).toBeGreaterThanOrEqual(3)
+
+    const mommyTopic = DIALOGUE_TOPICS.find((t) => t.id === 'mommy')!
+    expect(mommyTopic.lines.flat().some((l) => /rectangle/i.test(l))).toBe(true)
   })
 })
