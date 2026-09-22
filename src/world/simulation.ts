@@ -402,28 +402,7 @@ export function randomSeed(seed: number) {
   }
 }
 
-const names = [
-  'Kabichan',
-  'Mochi',
-  'Clover',
-  'Miso',
-  'Pip',
-  'Maple',
-  'Nori',
-  'Bean',
-  'Coco',
-  'Olive',
-  'Biscuit',
-  'Pebble',
-  'Tofu',
-  'Moss',
-  'Crumble',
-  'Juniper',
-  'Sunny',
-  'Fig',
-  'Pudding',
-  'Clementine',
-]
+export const RESIDENT_NAME = 'kabichan'
 const personalities = [
   'A little daydreamer',
   'Professional sunbeam finder',
@@ -623,10 +602,7 @@ export class Simulation {
         : settling
       this.cats.push({
         id,
-        name:
-          id < names.length
-            ? names[id]
-            : `${names[id % names.length]} ${Math.floor(id / names.length) + 1}`,
+        name: RESIDENT_NAME,
         ...p,
         target: { ...p },
         personality: personalities[id % personalities.length],

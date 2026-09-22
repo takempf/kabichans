@@ -3,6 +3,7 @@ import {
   EMOTE_SECONDS,
   CAT_COUNT,
   MAX_PUDDLES,
+  RESIDENT_NAME,
   TRAVEL_SPEEDS,
   VOMIT_DURATION,
   VOMIT_EMIT_TIME,
@@ -33,10 +34,10 @@ function residentsHaveSpace(residents: Cat[]) {
 }
 
 describe('the cat world', { timeout: 60000 }, () => {
-  it('starts with 100 unique residents on walkable land', () => {
+  it('starts with 100 residents named kabichan on walkable land', () => {
     const simulation = new Simulation()
     expect(simulation.cats).toHaveLength(CAT_COUNT)
-    expect(new Set(simulation.cats.map((c) => c.name)).size).toBe(CAT_COUNT)
+    expect(simulation.cats.every((c) => c.name === RESIDENT_NAME)).toBe(true)
     expect(new Set(simulation.cats.map((c) => c.id)).size).toBe(CAT_COUNT)
     expect(simulation.cats.every((c) => isWalkable(c.x, c.z))).toBe(true)
     expect(residentsHaveSpace(simulation.cats)).toBe(true)

@@ -39,10 +39,14 @@ test('renders the meadow and supports the main simulation controls', async ({
   ).toBeVisible()
   await page.getByRole('button', { name: '100 cats' }).click()
   await expect(page.locator('.resident-option')).toHaveCount(100)
-  await page.getByRole('textbox', { name: 'Search residents' }).fill('Mochi')
-  await expect(page.locator('.resident-option')).toHaveCount(5)
+  await page
+    .getByRole('textbox', { name: 'Search residents' })
+    .fill('nonexistent')
+  await expect(page.locator('.resident-option')).toHaveCount(0)
+  await page.getByRole('textbox', { name: 'Search residents' }).fill('kabichan')
+  await expect(page.locator('.resident-option')).toHaveCount(100)
   await page.locator('.resident-option').first().click()
-  await expect(page.locator('.resident-copy h2')).toHaveText('Mochi')
+  await expect(page.locator('.resident-copy h2')).toHaveText('kabichan')
   await page.getByRole('button', { name: 'Reset camera' }).click()
   await expect(
     page.getByRole('button', { name: 'Follow this little friend' }),
