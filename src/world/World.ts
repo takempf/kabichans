@@ -4,12 +4,7 @@ import { CatRenderer } from './cats'
 import { CottageRenderer } from './cottageRenderer'
 import { CafeRenderer } from './cafe'
 import { PsxDithering } from './dithering'
-import {
-  TREAT_COLOR,
-  bendMaterial,
-  canvasTexture,
-  treatGeometry,
-} from './materials'
+import { TREAT_COLOR, bendMaterial, treatGeometry } from './materials'
 import type { BendUniforms } from './materials'
 import { createScenery } from './scenery'
 import { updateGrassMaterial } from './grassMaterial'
@@ -27,6 +22,7 @@ import {
 } from './toss'
 import type { TossSpread } from './toss'
 import { LaserRenderer } from './laser'
+import { SkyRenderer } from './sky'
 
 const MAX_RENDER_HEIGHT = 480
 const DEFAULT_CAMERA_ZOOM = 1.3
@@ -63,6 +59,7 @@ export class CatWorld {
   private butterflies: ButterflyRenderer
   private cottages: CottageRenderer
   private nightLights: NightLights
+  private sky = new SkyRenderer()
   private selection: THREE.Mesh
   private treats: THREE.InstancedMesh
   private aimReticle: THREE.Mesh
@@ -174,7 +171,7 @@ export class CatWorld {
       )
     })
     this.sun.position.set(-15, 30, 20)
-    this.scene.add(this.sun, this.ambient)
+    this.scene.add(this.sun, this.ambient, this.sky.mesh)
     const { group: sceneryGroup, grassMaterial } = createScenery(this.bend)
     this.grassMaterial = grassMaterial
     this.scene.add(sceneryGroup)
@@ -274,73 +271,16 @@ export class CatWorld {
 
   private setTime(time: TimeOfDay) {
     const palettes = {
-      day: ['#a9d9d9', '#deebcf', '#f7f9e5', '#fff1d4', '#eff8e2'],
-      golden: ['#d4bfcb', '#f5d6ae', '#ffead1', '#ffd2a0', '#f8dabc'],
-      night: ['#203447', '#637b83', '#9caeae', '#b9cddd', '#91aabc'],
+      day: ['#3584cf', '#bce2ee', '#ffffff', '#fff1d4', '#eff8e2'],
+      golden: ['#4a365f', '#f8be8e', '#ffe4ca', '#ffd2a0', '#f8dabc'],
+      night: ['#0b1420', '#2a4456', '#475e72', '#b9cddd', '#91aabc'],
     }
-    const [top, bottom, cloud, sunlight, ambient] = palettes[time]
+    const [top, bottom, , sunlight, ambient] = palettes[time]
     const previousBackground = this.scene.background
     if (previousBackground instanceof THREE.Texture)
       previousBackground.dispose()
-    this.scene.background = canvasTexture(1024, 512, (ctx) => {
-      const gradient = ctx.createLinearGradient(0, 0, 0, 512)
-      gradient.addColorStop(0, top)
-      gradient.addColorStop(0.65, bottom)
-      gradient.addColorStop(1, bottom)
-      ctx.fillStyle = gradient
-      ctx.fillRect(0, 0, 1024, 512)
-      ctx.fillStyle = cloud
-      ctx.globalAlpha = time === 'night' ? 0.15 : 0.38
-      for (const [x, y, scale] of [
-        [130, 75, 1],
-        [610, 35, 0.75],
-        [940, 110, 0.9],
-      ]) {
-        ctx.beginPath()
-        ctx.ellipse(x, y, 92 * scale, 14 * scale, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.ellipse(
-          x - 20 * scale,
-          y - 11 * scale,
-          45 * scale,
-          25 * scale,
-          0,
-          0,
-          Math.PI * 2,
-        )
-        ctx.fill()
-        ctx.beginPath()
-        ctx.ellipse(
-          x + 29 * scale,
-          y - 6 * scale,
-          40 * scale,
-          18 * scale,
-          0,
-          0,
-          Math.PI * 2,
-        )
-        ctx.fill()
-      }
-      if (time === 'night') {
-        ctx.globalAlpha = 0.8
-        ctx.fillStyle = '#f6edcf'
-        for (let i = 0; i < 45; i++) {
-          ctx.beginPath()
-          ctx.arc(
-            (i * 137.3) % 1024,
-            (i * 57.7) % 160,
-            i % 3 === 0 ? 1.5 : 0.8,
-            0,
-            Math.PI * 2,
-          )
-          ctx.fill()
-        }
-        ctx.beginPath()
-        ctx.arc(820, 55, 15, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    })
+    this.scene.background = null
+    this.sky.setTime(time, this.sun.position)
     // A long, gentle fade brings a little sky color into the distant meadow.
     const haze = new THREE.Color(bottom).lerp(new THREE.Color(top), 0.15)
     this.scene.fog = new THREE.Fog(haze, 36, 140)
@@ -935,6 +875,13 @@ export class CatWorld {
       this.bend,
       this.options.reducedMotion,
     )
+    this.sky.update(
+      this.camera,
+      this.focus,
+      this.simulation.elapsed,
+      dt,
+      this.options.reducedMotion,
+    )
     updateGrassMaterial(
       this.grassMaterial,
       this.options.reducedMotion ? 0 : this.simulation.elapsed,
@@ -997,6 +944,7 @@ export class CatWorld {
     textures.forEach((t) => t.dispose())
     if (this.scene.background instanceof THREE.Texture)
       this.scene.background.dispose()
+    this.sky.dispose()
     this.laser.dispose()
     this.cafe.dispose()
     this.dithering.dispose()
