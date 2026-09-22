@@ -99,7 +99,11 @@ function ear(x: number) {
       normals.getZ(i) > 0.5 ? (positions.getY(i) + 0.15) / 1.15 : 0.02,
     )
     const height = THREE.MathUtils.clamp((positions.getY(i) + 0.1) / 1.06, 0, 1)
-    positions.setZ(i, 0.08 + (positions.getZ(i) - 0.08) * (1 - height * 0.8))
+    const origZ = positions.getZ(i)
+    const zDiff = origZ - 0.08
+    const isBack = THREE.MathUtils.clamp((0.08 - origZ) / 0.125, 0, 1)
+    const backShift = (1 - height) ** 1.3 * isBack * 0.26
+    positions.setZ(i, 0.08 + zDiff * (1 - height * 0.8) - backShift)
   }
   g.computeVertexNormals()
   g.translate(x, 0.36, -0.06)
@@ -194,11 +198,22 @@ export class CatRenderer {
       material('#ffffff', { map: earTexture() }),
       'head',
     )
-    this.add(ellipsoid(0, 0.88, 0, 0.28, 0.33, 0.22), cream, 'body')
-    const shirt = new THREE.CylinderGeometry(0.27, 0.46, 0.66, 24, 3)
+    this.add(
+      combine([
+        ellipsoid(0, 0.88, 0, 0.28, 0.33, 0.22),
+        ellipsoid(0, 0.52, -0.01, 0.33, 0.2, 0.26),
+      ]),
+      cream,
+      'body',
+    )
+    const shirt = new THREE.CylinderGeometry(0.27, 0.46, 0.66, 24, 3, true)
       .scale(1, 1, 0.77)
       .translate(0, 0.87, 0)
-    const shirtMesh = this.add(shirt, material('#ffffff'), 'body')
+    const shirtMesh = this.add(
+      shirt,
+      material('#ffffff', { side: THREE.DoubleSide }),
+      'body',
+    )
     cats.forEach((c) => shirtMesh.setColorAt(c.id, new THREE.Color(c.shirt)))
     this.add(
       new THREE.TorusGeometry(0.265, 0.037, 8, 24)
