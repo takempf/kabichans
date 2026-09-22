@@ -398,6 +398,7 @@ export default function App() {
   const [dialog, setDialog] = useState<
     'settings' | 'help' | 'residents' | 'map' | null
   >(null)
+  const [spotlightHidden, setSpotlightHidden] = useState(false)
   const [search, setSearch] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -489,6 +490,7 @@ export default function App() {
     setSelected(c.id)
     setFollow(true)
     setDialog(null)
+    setSpotlightHidden(false)
   }
   const shuffle = () => {
     const id =
@@ -605,47 +607,70 @@ export default function App() {
           </div>
         )}
 
-        <aside className="resident-card">
-          <div className="card-eyebrow">
-            <span>RESIDENT SPOTLIGHT</span>
-            <button
-              className="tiny-button"
-              onClick={shuffle}
-              aria-label="Meet a random cat"
-            >
-              <Shuffle size={15} />
-            </button>
-          </div>
-          <div className="resident-main">
-            <div className="portrait">
-              <CatPortrait shirt={cat?.shirt} />
-            </div>
-            <div className="resident-copy">
-              <span className="resident-number">
-                {cat
-                  ? `NO. ${String(cat.id + 1).padStart(3, '0')}`
-                  : 'SAY HELLO'}
-              </span>
-              <h2>{cat?.name ?? 'Meet a neighbor'}</h2>
-              <p>{cat?.personality ?? 'Click any cat to get acquainted.'}</p>
-            </div>
-          </div>
-          <div className="resident-activity">
-            <span className={`activity-dot ${cat?.activity ?? ''}`} />
-            {cat
-              ? residentActivity(cat, snapshot?.cats, critter)
-              : 'A new friend is just a click away'}
-          </div>
+        {spotlightHidden ? (
           <button
-            className={`follow-button ${follow ? 'is-following' : ''}`}
-            disabled={!cat}
-            onClick={() => setFollow(!follow)}
+            className="spotlight-open-button"
+            onClick={() => setSpotlightHidden(false)}
+            aria-label="Open resident spotlight"
           >
-            {follow ? <Check size={15} /> : <Heart size={15} />}
-            {follow ? 'Following along' : 'Follow this little friend'}
-            <ArrowUpRight size={15} />
+            <CatIcon size={14} />
+            <span>Resident spotlight</span>
+            <ChevronRight size={13} className="spotlight-open-arrow" />
           </button>
-        </aside>
+        ) : (
+          <aside className="resident-card">
+            <div className="card-eyebrow">
+              <span>RESIDENT SPOTLIGHT</span>
+              <div className="card-actions">
+                <button
+                  className="tiny-button"
+                  onClick={shuffle}
+                  aria-label="Meet a random cat"
+                  title="Meet a random cat"
+                >
+                  <Shuffle size={14} />
+                </button>
+                <button
+                  className="tiny-button"
+                  onClick={() => setSpotlightHidden(true)}
+                  aria-label="Hide resident spotlight"
+                  title="Hide resident spotlight"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div className="resident-main">
+              <div className="portrait">
+                <CatPortrait shirt={cat?.shirt} />
+              </div>
+              <div className="resident-copy">
+                <span className="resident-number">
+                  {cat
+                    ? `NO. ${String(cat.id + 1).padStart(3, '0')}`
+                    : 'SAY HELLO'}
+                </span>
+                <h2>{cat?.name ?? 'Meet a neighbor'}</h2>
+                <p>{cat?.personality ?? 'Click any cat to get acquainted.'}</p>
+              </div>
+            </div>
+            <div className="resident-activity">
+              <span className={`activity-dot ${cat?.activity ?? ''}`} />
+              {cat
+                ? residentActivity(cat, snapshot?.cats, critter)
+                : 'A new friend is just a click away'}
+            </div>
+            <button
+              className={`follow-button ${follow ? 'is-following' : ''}`}
+              disabled={!cat}
+              onClick={() => setFollow(!follow)}
+            >
+              {follow ? <Check size={15} /> : <Heart size={15} />}
+              {follow ? 'Following along' : 'Follow this little friend'}
+              <ArrowUpRight size={15} />
+            </button>
+          </aside>
+        )}
 
         <div className="bottom-center">
           <div className="explore-hint">

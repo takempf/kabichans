@@ -372,6 +372,7 @@ button svg {
   border-radius: 17px;
   box-shadow: 0 5px 25px #324f3720;
   backdrop-filter: blur(14px);
+  animation: arrive 0.2s ease;
 }
 .card-eyebrow {
   display: flex;
@@ -382,6 +383,11 @@ button svg {
   color: #8b927c;
   font-weight: 650;
 }
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .tiny-button {
   display: grid;
   place-items: center;
@@ -389,9 +395,62 @@ button svg {
   height: 23px;
   border-radius: 6px;
   color: #8b947d;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
 }
 .tiny-button:hover {
   background: #e6e9d9;
+  color: #555f46;
+}
+.tiny-button:active {
+  transform: scale(0.92);
+}
+.spotlight-open-button {
+  position: absolute;
+  left: 26px;
+  bottom: 30px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #fffdf1f2;
+  border: 1px solid #ffffffab;
+  border-radius: 14px;
+  box-shadow: 0 5px 25px #324f3720;
+  backdrop-filter: blur(14px);
+  color: #5b674b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  animation: arrive 0.2s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+.spotlight-open-button:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 7px 28px #324f372c;
+  color: #3b462c;
+}
+.spotlight-open-button:active {
+  transform: translateY(0) scale(0.97);
+}
+.spotlight-open-arrow {
+  color: #8f9b7c;
+  transition: transform 0.15s ease;
+}
+.spotlight-open-button:hover .spotlight-open-arrow {
+  transform: translateX(2px);
+  color: #5b674b;
 }
 .resident-main {
   display: flex;
@@ -1191,14 +1250,22 @@ input[type='range'] {
     height: 84px;
   }
   .resident-card,
+  .spotlight-open-button,
   .right-controls {
     bottom: 36px;
   }
+  .spotlight-open-button {
+    padding: 10px 16px;
+    font-size: 12px;
+  }
 }
 @media (max-width: 1150px) {
+  .resident-card,
+  .spotlight-open-button {
+    left: 19px;
+  }
   .resident-card {
     width: 225px;
-    left: 19px;
     padding: 12px;
   }
   .resident-copy h2 {
@@ -1259,9 +1326,16 @@ input[type='range'] {
   .right-controls {
     bottom: 119px;
   }
-  .resident-card {
+  .resident-card,
+  .spotlight-open-button {
     bottom: 118px;
+  }
+  .resident-card {
     width: 205px;
+  }
+  .spotlight-open-button {
+    font-size: 10px;
+    padding: 7px 12px;
   }
   .resident-activity {
     font-size: 9px;
@@ -1359,12 +1433,21 @@ input[type='range'] {
   .weather > svg {
     width: 12px;
   }
-  .resident-card {
+  .resident-card,
+  .spotlight-open-button {
     left: 15px;
     bottom: 121px;
+  }
+  .resident-card {
     width: 185px;
     padding: 10px 11px;
     border-radius: 13px;
+  }
+  .spotlight-open-button {
+    font-size: 9px;
+    padding: 6px 10px;
+    border-radius: 11px;
+    gap: 6px;
   }
   .resident-copy h2 {
     font-size: 15px;

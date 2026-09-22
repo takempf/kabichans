@@ -123,3 +123,15 @@ test('dragging on mobile in laser mode does not move camera or interrupt follow'
     page.getByRole('button', { name: 'Follow this little friend' }),
   ).toBeVisible()
 })
+
+test('can hide and reopen the resident spotlight', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.resident-card')).toBeVisible()
+  await page.getByRole('button', { name: 'Hide resident spotlight' }).click()
+  await expect(page.locator('.resident-card')).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: 'Open resident spotlight' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Open resident spotlight' }).click()
+  await expect(page.locator('.resident-card')).toBeVisible()
+})
