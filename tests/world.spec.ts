@@ -68,3 +68,54 @@ test('fits a mobile screen and keeps controls reachable', async ({ page }) => {
   await page.getByRole('button', { name: 'Let’s wander' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
+
+test('dragging on mobile in laser mode does not move camera or interrupt follow', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await expect(
+    page.getByRole('button', { name: 'Follow this little friend' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Follow this little friend' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Following along' }),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Turn on laser pointer' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Turn off laser pointer' }),
+  ).toBeVisible()
+
+  const canvas = page.locator('[data-testid="world"] canvas')
+  const box = await canvas.boundingBox()
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(
+      box.x + box.width / 2 + 80,
+      box.y + box.height / 2 + 80,
+      { steps: 5 },
+    )
+    await page.mouse.up()
+  }
+
+  await expect(
+    page.getByRole('button', { name: 'Following along' }),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Turn off laser pointer' }).click()
+  if (box) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(
+      box.x + box.width / 2 + 80,
+      box.y + box.height / 2 + 80,
+      { steps: 5 },
+    )
+    await page.mouse.up()
+  }
+  await expect(
+    page.getByRole('button', { name: 'Follow this little friend' }),
+  ).toBeVisible()
+})

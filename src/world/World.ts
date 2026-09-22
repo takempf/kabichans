@@ -377,6 +377,8 @@ export class CatWorld {
         canvas.setPointerCapture(event.pointerId)
         if (this.holdingTreats) {
           this.startTossAim(event.clientX, event.clientY)
+        } else if (this.laserActive) {
+          this.updateLaserPoint(event.clientX, event.clientY)
         } else {
           this.drag = { x: event.clientX, y: event.clientY, distance: 0 }
         }
@@ -388,6 +390,7 @@ export class CatWorld {
       (event) => {
         if (this.laserActive) {
           this.updateLaserPoint(event.clientX, event.clientY)
+          return
         }
         if (this.holdingTreats && this.tossDrag) {
           this.updateTossAim(event.clientX, event.clientY)
@@ -412,8 +415,14 @@ export class CatWorld {
     canvas.addEventListener(
       'pointerup',
       (event) => {
+        if (canvas.hasPointerCapture(event.pointerId)) {
+          canvas.releasePointerCapture(event.pointerId)
+        }
         if (this.holdingTreats && this.tossDrag) {
           this.executeToss()
+          return
+        }
+        if (this.laserActive) {
           return
         }
         if (this.drag && this.drag.distance < 6)
@@ -424,7 +433,10 @@ export class CatWorld {
     )
     canvas.addEventListener(
       'pointercancel',
-      () => {
+      (event) => {
+        if (canvas.hasPointerCapture(event.pointerId)) {
+          canvas.releasePointerCapture(event.pointerId)
+        }
         if (this.tossDrag) this.cancelToss()
         this.drag = null
       },
@@ -708,7 +720,9 @@ export class CatWorld {
 
   setHoldingTreats(holding: boolean): void {
     this.holdingTreats = holding
-    if (!holding) {
+    if (holding) {
+      this.drag = null
+    } else {
       this.cancelToss()
     }
     this.onHoldingTreatsChange?.(holding)
@@ -735,7 +749,9 @@ export class CatWorld {
 
   setLaserActive(active: boolean): void {
     this.laserActive = active
-    if (!active) {
+    if (active) {
+      this.drag = null
+    } else {
       this.laserPoint = null
       this.simulation.setLaserTarget(null)
     }

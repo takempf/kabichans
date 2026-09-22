@@ -694,7 +694,9 @@ button svg {
     transform: translateY(0);
   }
 }
-.world-shell.is-holding-treats {
+.world-shell.is-holding-treats,
+.world-shell.is-holding-treats .world-canvas,
+.world-shell.is-holding-treats .world-canvas:active {
   cursor: crosshair;
 }
 .laser-button {
@@ -742,7 +744,9 @@ button svg {
     transform: scale(1.2) rotate(15deg);
   }
 }
-.world-shell.is-laser-active {
+.world-shell.is-laser-active,
+.world-shell.is-laser-active .world-canvas,
+.world-shell.is-laser-active .world-canvas:active {
   cursor: crosshair;
 }
 .right-controls {
