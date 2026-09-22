@@ -9,7 +9,8 @@ import type { BendUniforms } from './materials'
 import { createScenery } from './scenery'
 import { updateGrassMaterial } from './grassMaterial'
 import { CAT_COUNT, Simulation, WORLD, isHidden } from './simulation'
-import type { Point, Snapshot, TimeOfDay } from './simulation'
+import type { Cat, MapCat, Point, TimeOfDay, UISnapshot } from './simulation'
+export type { MapCat, UISnapshot }
 import { groundHeight } from './terrain'
 import { SpeechBubbles } from './speech'
 import { EmoteMarks } from './emotes'
@@ -42,6 +43,7 @@ export interface WorldOptions {
   follow: boolean
   selected: number | null
   reducedMotion: boolean
+  showDirectory?: boolean
 }
 export class CatWorld {
   readonly simulation = new Simulation()
@@ -110,6 +112,7 @@ export class CatWorld {
     follow: false,
     selected: null,
     reducedMotion: false,
+    showDirectory: false,
   }
   private focus = new THREE.Vector2(0, 0)
   private target = new THREE.Vector2(0, 0)
@@ -124,7 +127,7 @@ export class CatWorld {
   private drag: { x: number; y: number; distance: number } | null = null
   private projected = new THREE.Vector3()
   private treatPiece = new THREE.Object3D()
-  private onSnapshot: (snapshot: Snapshot) => void
+  private onSnapshot: (snapshot: UISnapshot) => void
   private onSelect: (id: number | null) => void
   private onManualMove: () => void
   private onError: (message: string) => void
@@ -134,7 +137,7 @@ export class CatWorld {
 
   constructor(
     host: HTMLElement,
-    onSnapshot: (s: Snapshot) => void,
+    onSnapshot: (s: UISnapshot) => void,
     onSelect: (id: number | null) => void,
     onManualMove: () => void,
     onError: (message: string) => void,
@@ -256,17 +259,25 @@ export class CatWorld {
     this.resizeObserver.observe(host)
     this.resize()
     this.bindControls()
-    this.onSnapshot(this.simulation.snapshot())
+    this.emitSnapshot()
     this.frame = requestAnimationFrame(this.tick)
   }
 
-  setOptions(options: WorldOptions) {
-    if (options.selected !== null && options.selected !== this.options.selected)
+  setOptions(options: WorldOptions): void {
+    const selectedChanged = options.selected !== this.options.selected
+    const directoryChanged =
+      Boolean(options.showDirectory) !== Boolean(this.options.showDirectory)
+    if (options.selected !== null && selectedChanged) {
       this.simulation.revealDialogue(options.selected)
-    if (options.timeOfDay !== this.options.timeOfDay)
+    }
+    if (options.timeOfDay !== this.options.timeOfDay) {
       this.setTime(options.timeOfDay)
+    }
     this.options = options
     this.bend.amount.value = options.curvature
+    if (selectedChanged || directoryChanged) {
+      this.emitSnapshot()
+    }
   }
 
   private setTime(time: TimeOfDay) {
@@ -522,9 +533,9 @@ export class CatWorld {
     this.target.set(point.x, point.z)
     this.clampTarget()
   }
-  dropTreat() {
+  dropTreat(): void {
     this.simulation.dropTreat({ x: this.focus.x, z: this.focus.y + 3 })
-    this.onSnapshot(this.simulation.snapshot())
+    this.emitSnapshot()
   }
 
   startTossAim(clientX: number, clientY: number): void {
@@ -772,7 +783,7 @@ export class CatWorld {
     if (allLanded && this.pendingTossLanding) {
       const { center, pieces } = this.pendingTossLanding
       this.simulation.dropTreat(center, pieces)
-      this.onSnapshot(this.simulation.snapshot())
+      this.emitSnapshot()
       this.flyingTreats = []
       this.pendingTossLanding = null
     }
@@ -911,9 +922,31 @@ export class CatWorld {
     this.dithering.render(this.renderer)
     if (timestamp - this.lastSnapshot > 300) {
       this.lastSnapshot = timestamp
-      this.onSnapshot(this.simulation.snapshot())
+      this.emitSnapshot()
     }
     this.frame = requestAnimationFrame(this.tick)
+  }
+
+  private emitSnapshot(): void {
+    this.onSnapshot(
+      this.simulation.uiSnapshot(
+        this.options.selected,
+        this.options.showDirectory,
+      ),
+    )
+  }
+
+  getCat(id: number): Cat | null {
+    const cat = this.simulation.cats[id]
+    if (!cat) return null
+    return {
+      ...cat,
+      cafeWorker: cat.cafeWorker ? { ...cat.cafeWorker } : null,
+      cafeCustomer: cat.cafeCustomer ? { ...cat.cafeCustomer } : null,
+      cottage: cat.cottage ? { ...cat.cottage } : null,
+      snack: cat.snack ? { ...cat.snack } : null,
+      objective: cat.objective ? { ...cat.objective } : null,
+    }
   }
 
   dispose() {

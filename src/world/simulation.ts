@@ -392,6 +392,20 @@ export interface Snapshot {
   carriedItems: CafeWorkerCarriedItem[]
 }
 
+export interface MapCat {
+  readonly id: number
+  readonly x: number
+  readonly z: number
+  readonly inside: boolean
+}
+
+export interface UISnapshot {
+  readonly counts: Record<Activity, number>
+  readonly mapCats: readonly MapCat[]
+  readonly selectedCat: Cat | null
+  readonly residents?: readonly Cat[]
+}
+
 export function randomSeed(seed: number) {
   return () => {
     seed |= 0
@@ -4154,11 +4168,8 @@ export class Simulation {
           ...entry,
           destination: { ...entry.destination },
         })),
-        favorites: cat.favorites.map((spot) => ({
-          ...spot,
-          point: { ...spot.point },
-        })),
-        friends: [...cat.friends],
+        favorites: cat.favorites,
+        friends: cat.friends,
         route: cat.route.map((point) => ({ ...point })),
         velocity: { ...cat.velocity },
       })),
@@ -4172,6 +4183,65 @@ export class Simulation {
       })),
       deliveredFoods: this.deliveredFoods.map((f) => ({ ...f })),
       carriedItems: this.getCarriedItems(),
+    }
+  }
+
+  uiSnapshot(selectedId: number | null, includeResidents = false): UISnapshot {
+    const counts: Record<Activity, number> = {
+      wandering: 0,
+      resting: 0,
+      sitting: 0,
+      lying: 0,
+      vomiting: 0,
+      socializing: 0,
+      conversing: 0,
+      snacking: 0,
+      working: 0,
+      indoors: 0,
+    }
+    const mapCats: MapCat[] = new Array(this.cats.length)
+    for (let i = 0; i < this.cats.length; i++) {
+      const cat = this.cats[i]
+      counts[cat.activity]++
+      mapCats[i] = {
+        id: cat.id,
+        x: cat.x,
+        z: cat.z,
+        inside: cat.cottage?.stage === 'inside',
+      }
+    }
+    let selectedCat: Cat | null = null
+    if (
+      selectedId !== null &&
+      selectedId >= 0 &&
+      selectedId < this.cats.length
+    ) {
+      const selected = this.cats[selectedId]
+      selectedCat = {
+        ...selected,
+        cafeWorker: selected.cafeWorker ? { ...selected.cafeWorker } : null,
+        cafeCustomer: selected.cafeCustomer
+          ? { ...selected.cafeCustomer }
+          : null,
+        cottage: selected.cottage ? { ...selected.cottage } : null,
+        snack: selected.snack ? { ...selected.snack } : null,
+        objective: selected.objective ? { ...selected.objective } : null,
+      }
+    }
+    return {
+      counts,
+      mapCats,
+      selectedCat,
+      residents: includeResidents
+        ? this.cats.map((cat) => ({
+            ...cat,
+            cafeWorker: cat.cafeWorker ? { ...cat.cafeWorker } : null,
+            cafeCustomer: cat.cafeCustomer ? { ...cat.cafeCustomer } : null,
+            cottage: cat.cottage ? { ...cat.cottage } : null,
+            snack: cat.snack ? { ...cat.snack } : null,
+            objective: cat.objective ? { ...cat.objective } : null,
+          }))
+        : undefined,
     }
   }
 }

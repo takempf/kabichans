@@ -411,4 +411,31 @@ describe('the cat world', { timeout: 60000 }, () => {
     for (let i = 0; i < 1200; i++) simulation.step(0.1)
     expect(simulation.puddles).toEqual(retained)
   })
+
+  it('provides lean targeted UI snapshots without deep resident trees', () => {
+    const simulation = new Simulation()
+    const defaultUi = simulation.uiSnapshot(null, false)
+    expect(defaultUi.mapCats).toHaveLength(CAT_COUNT)
+    expect(defaultUi.mapCats[0]).toEqual({
+      id: 0,
+      x: simulation.cats[0].x,
+      z: simulation.cats[0].z,
+      inside: simulation.cats[0].cottage?.stage === 'inside',
+    })
+    expect(defaultUi.selectedCat).toBeNull()
+    expect(defaultUi.residents).toBeUndefined()
+    expect(Object.values(defaultUi.counts).reduce((a, b) => a + b, 0)).toBe(
+      CAT_COUNT,
+    )
+
+    const selectedUi = simulation.uiSnapshot(7, true)
+    expect(selectedUi.selectedCat?.id).toBe(7)
+    expect(selectedUi.residents).toHaveLength(CAT_COUNT)
+    expect(selectedUi.residents?.[7].id).toBe(7)
+
+    if (selectedUi.selectedCat) {
+      selectedUi.selectedCat.name = 'mutated'
+      expect(simulation.cats[7].name).toBe(RESIDENT_NAME)
+    }
+  })
 })

@@ -27,10 +27,10 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { CatWorld, DEFAULT_CURVATURE } from './world/World'
+import { CatWorld, DEFAULT_CURVATURE, type UISnapshot } from './world/World'
 import { TreatHandCursor } from './TreatHandCursor'
-import type { Cat, Point, Snapshot, TimeOfDay } from './world/simulation'
-import { CAT_COUNT } from './world/simulation'
+import type { Cat, Point, TimeOfDay } from './world/simulation'
+import { CAT_COUNT, RESIDENT_NAME } from './world/simulation'
 import { COTTAGE_SIZE, FENCE_BOUNDS, houses } from './world/geography'
 import { BRIDGE, CREEK_WIDTH, creekX, meadowPathX } from './world/terrain'
 import { CAT_COAT_GRADIENT, CAT_COLORS, catFacePaint } from './world/catArtwork'
@@ -146,11 +146,11 @@ function MiniMap({
   navigate,
   expanded,
 }: {
-  snapshot: Snapshot | null
-  selected: number | null
-  navigate: (point: Point) => void
-  expanded: boolean
-}) {
+  readonly snapshot: UISnapshot | null
+  readonly selected: number | null
+  readonly navigate: (point: Point) => void
+  readonly expanded: boolean
+}): React.JSX.Element {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const canvas = ref.current,
@@ -210,8 +210,8 @@ function MiniMap({
     ctx.strokeStyle = '#bc9b77'
     ctx.lineWidth = 2
     ctx.strokeRect(1, 1, w - 2, h - 2)
-    for (const cat of snapshot?.cats ?? []) {
-      if (cat.cottage?.stage === 'inside') continue
+    for (const cat of snapshot?.mapCats ?? []) {
+      if (cat.inside) continue
       const x = mapX(cat.x)
       const y = mapZ(cat.z)
       ctx.beginPath()
@@ -265,10 +265,9 @@ const activityLabels = {
 
 function residentActivity(
   cat: Cat,
-  residents: Cat[] = [],
   // Butterflies turn into fireflies after dark.
   critter = 'butterfly',
-) {
+): string {
   if (cat.cafeWorker) {
     const worker = cat.cafeWorker
     if (worker.state === 'reporting')
@@ -341,9 +340,7 @@ function residentActivity(
   if (!objective && cat.butterflyId !== null)
     return `Watching a ${critter} flutter away`
   if (!objective) return activityLabels[cat.activity]
-  const friend =
-    residents.find((other) => other.id === objective.friendId)?.name ??
-    'a friend'
+  const friend = objective.friendId !== null ? RESIDENT_NAME : 'a friend'
   if (objective.phase === 'doing')
     return objective.kind === 'visit'
       ? `Catching up with ${friend}`
@@ -385,7 +382,7 @@ const times: {
 export default function App() {
   const host = useRef<HTMLDivElement>(null)
   const world = useRef<CatWorld | null>(null)
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
+  const [snapshot, setSnapshot] = useState<UISnapshot | null>(null)
   const [selected, setSelected] = useState<number | null>(0)
   const [follow, setFollow] = useState(false)
   const [paused, setPaused] = useState(false)
@@ -457,19 +454,34 @@ export default function App() {
       follow,
       selected,
       reducedMotion,
+      showDirectory: dialog === 'residents',
     })
-  }, [paused, speed, curvature, timeOfDay, follow, selected, reducedMotion])
+  }, [
+    paused,
+    speed,
+    curvature,
+    timeOfDay,
+    follow,
+    selected,
+    reducedMotion,
+    dialog,
+  ])
 
-  const notify = (message: string) => {
+  const notify = (message: string): void => {
     setNotice(message)
     clearTimeout(noticeTimer.current)
     noticeTimer.current = setTimeout(() => setNotice(null), 4200)
   }
-  const cat = selected === null ? null : snapshot?.cats[selected]
+  const cat =
+    selected === null
+      ? null
+      : snapshot?.selectedCat?.id === selected
+        ? snapshot.selectedCat
+        : (world.current?.getCat(selected) ?? null)
   const time = times.find((t) => t.value === timeOfDay)!
   const critter = timeOfDay === 'night' ? 'firefly' : 'butterfly'
   const TimeIcon = time.icon
-  const chooseCat = (c: Cat) => {
+  const chooseCat = (c: { readonly id: number }): void => {
     setSelected(c.id)
     setFollow(true)
     setDialog(null)
@@ -636,7 +648,7 @@ export default function App() {
             <div className="resident-activity">
               <span className={`activity-dot ${cat?.activity ?? ''}`} />
               {cat
-                ? residentActivity(cat, snapshot?.cats, critter)
+                ? residentActivity(cat, critter)
                 : 'A new friend is just a click away'}
             </div>
             <button
@@ -954,7 +966,7 @@ export default function App() {
             />
           </label>
           <div className="resident-grid">
-            {snapshot?.cats
+            {(snapshot?.residents ?? [])
               .filter((c) =>
                 c.name.toLowerCase().includes(search.toLowerCase()),
               )
@@ -969,13 +981,13 @@ export default function App() {
                   </div>
                   <span>
                     <strong>{c.name}</strong>
-                    <small>{residentActivity(c, snapshot.cats, critter)}</small>
+                    <small>{residentActivity(c, critter)}</small>
                   </span>
                   <ChevronRight size={15} />
                 </button>
               ))}
-            {snapshot &&
-              !snapshot.cats.some((c) =>
+            {snapshot?.residents &&
+              !snapshot.residents.some((c) =>
                 c.name.toLowerCase().includes(search.toLowerCase()),
               ) && (
                 <p className="empty-state">
