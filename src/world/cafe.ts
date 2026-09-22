@@ -244,19 +244,147 @@ function createSubdividedDeckGeometry(
   return geometry
 }
 
+function createDeckTopGeometry(
+  radius: number,
+  topY: number,
+  radialSegments = 48,
+  ringSegments = 16,
+): THREE.BufferGeometry {
+  const positions: number[] = []
+  const normals: number[] = []
+  const uvs: number[] = []
+  const indices: number[] = []
+
+  // Top cap center vertex
+  positions.push(0, topY, 0)
+  normals.push(0, 1, 0)
+  uvs.push(0.5, 0.5)
+
+  // Top cap concentric rings matching createSubdividedDeckGeometry
+  for (let r = 1; r <= ringSegments; r++) {
+    const frac = r / ringSegments
+    const rad = radius * frac
+    for (let s = 0; s < radialSegments; s++) {
+      const theta = (s / radialSegments) * Math.PI * 2
+      const x = Math.cos(theta) * rad
+      const z = Math.sin(theta) * rad
+      positions.push(x, topY, z)
+      normals.push(0, 1, 0)
+      uvs.push(
+        0.5 + 0.5 * frac * Math.cos(theta),
+        0.5 - 0.5 * frac * Math.sin(theta),
+      )
+    }
+  }
+
+  // Center fan
+  for (let s = 0; s < radialSegments; s++) {
+    const next = (s + 1) % radialSegments
+    indices.push(0, 1 + next, 1 + s)
+  }
+
+  // Concentric ring quads
+  for (let r = 1; r < ringSegments; r++) {
+    const curStart = 1 + (r - 1) * radialSegments
+    const nextStart = 1 + r * radialSegments
+    for (let s = 0; s < radialSegments; s++) {
+      const next = (s + 1) % radialSegments
+      const c0 = curStart + s
+      const c1 = curStart + next
+      const n0 = nextStart + s
+      const n1 = nextStart + next
+      indices.push(c0, c1, n0)
+      indices.push(c1, n1, n0)
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(positions, 3),
+  )
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.setIndex(indices)
+  return geometry
+}
+
+function createCafeTerraceShadowTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  const size = 1024
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+
+  const { x: cx, z: cz } = CAFE_TERRACE_CENTER
+  const rxWorld = CAFE_TERRACE_RADIUS * 1.05
+  const rzWorld = CAFE_TERRACE_RADIUS * 1.06
+
+  const toPxX = (x: number): number => size * (0.5 + (x - cx) / (2 * rxWorld))
+  const toPxY = (z: number): number => size * (0.5 + (z - cz) / (2 * rzWorld))
+  const toPxRadiusX = (r: number): number => (r / rxWorld) * (size / 2)
+  const toPxRadiusZ = (r: number): number => (r / rzWorld) * (size / 2)
+
+  const drawBlob = (
+    x: number,
+    z: number,
+    rx: number,
+    rz: number,
+    rotation = 0,
+    opacity = 0.22,
+  ): void => {
+    ctx.save()
+    ctx.translate(toPxX(x), toPxY(z))
+    if (rotation !== 0) ctx.rotate(rotation)
+    ctx.scale(toPxRadiusX(rx), toPxRadiusZ(rz))
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1)
+    grad.addColorStop(0, `rgba(31, 46, 34, ${opacity})`)
+    grad.addColorStop(0.5, `rgba(31, 46, 34, ${opacity * 0.4})`)
+    grad.addColorStop(1, 'rgba(31, 46, 34, 0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(0, 0, 1, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  // Kiosk counter shadow directly under the structure
+  drawBlob(
+    CAFE_COUNTER_POSITION.x,
+    CAFE_COUNTER_POSITION.z + 0.2,
+    4.4,
+    1.4,
+    0,
+    0.24,
+  )
+
+  // Table and stool shadows directly under furniture
+  for (const table of CAFE_TABLES) {
+    drawBlob(table.x, table.z, 2.0, 2.0, 0, 0.2)
+    for (const seat of table.seats) {
+      drawBlob(seat.x, seat.z, 0.55, 0.55, 0, 0.16)
+    }
+  }
+
+  // Break bench shadow directly under bench
+  drawBlob(CAFE_BREAK_BENCH.x, -3.8, 1.8, 0.75, CAFE_BREAK_BENCH.heading, 0.18)
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
 function buildPatioDeck(
   addMesh: MeshAdder,
   addShadow: ShadowAdder,
   group: THREE.Group,
   getMat: MaterialFactory,
+  bend: BendUniforms,
 ): void {
   const { x: cx, z: cz } = CAFE_TERRACE_CENTER
   const r = CAFE_TERRACE_RADIUS
   addShadow(cx, cz, r * 2.3, r * 2.15)
   const deckMat = getMat('#ded0b8', 0.96)
-  deckMat.polygonOffset = true
-  deckMat.polygonOffsetFactor = -1
-  deckMat.polygonOffsetUnits = -4
   const deck = new THREE.Mesh(
     createSubdividedDeckGeometry(r, r * 1.05, PATIO_HEIGHT, -0.05, 48, 16),
     deckMat,
@@ -266,6 +394,25 @@ function buildPatioDeck(
   deck.renderOrder = 1
   deck.frustumCulled = false
   group.add(deck)
+
+  const shadowCatcherMat = bendMaterial(
+    new THREE.MeshBasicMaterial({
+      map: createCafeTerraceShadowTexture(),
+      transparent: true,
+      depthWrite: false,
+    }),
+    bend,
+  )
+  const shadowCatcher = new THREE.Mesh(
+    createDeckTopGeometry(r, PATIO_HEIGHT + 0.001, 48, 16),
+    shadowCatcherMat,
+  )
+  shadowCatcher.position.set(cx, 0, cz)
+  shadowCatcher.scale.set(1.05, 1, 1.06)
+  shadowCatcher.renderOrder = 2
+  shadowCatcher.frustumCulled = false
+  group.add(shadowCatcher)
+
   const border = new THREE.Mesh(
     new THREE.TorusGeometry(r * 1.02, 0.22, 8, 44).rotateX(Math.PI / 2),
     getMat('#be9970'),
@@ -300,21 +447,12 @@ function buildSteppingStones(addMesh: MeshAdder, addShadow: ShadowAdder): void {
 
 function buildKioskStructure(
   addMesh: MeshAdder,
-  addShadow: ShadowAdder,
   group: THREE.Group,
   bend: BendUniforms,
 ): THREE.Group {
   const kioskGroup = new THREE.Group()
   kioskGroup.position.set(CAFE_COUNTER_POSITION.x, 0, CAFE_COUNTER_POSITION.z)
   group.add(kioskGroup)
-  addShadow(
-    CAFE_COUNTER_POSITION.x,
-    CAFE_COUNTER_POSITION.z + 0.5,
-    10.5,
-    7.5,
-    PATIO_HEIGHT + 0.003,
-    2,
-  )
   addMesh(
     new THREE.BoxGeometry(8.2, 1.4, 0.8),
     '#b0845a',
@@ -513,13 +651,11 @@ function buildKioskProps(addMesh: MeshAdder, kioskGroup: THREE.Group): void {
 function buildOutdoorTable(
   table: CafeTable,
   addMesh: MeshAdder,
-  addShadow: ShadowAdder,
   group: THREE.Group,
 ): void {
   const tableGroup = new THREE.Group()
   tableGroup.position.set(table.x, 0, table.z)
   group.add(tableGroup)
-  addShadow(table.x, table.z, 4.8, 4.8, PATIO_HEIGHT + 0.003, 2)
   addMesh(
     new THREE.CylinderGeometry(table.radius, table.radius, 0.12, 30),
     '#dfc199',
@@ -561,7 +697,7 @@ function buildOutdoorTable(
   )
   base.renderOrder = 2
   buildTableVase(addMesh, tableGroup)
-  buildTableStools(table, addMesh, addShadow, group)
+  buildTableStools(table, addMesh, group)
 }
 
 function buildTableVase(addMesh: MeshAdder, tableGroup: THREE.Group): void {
@@ -595,7 +731,6 @@ function buildTableVase(addMesh: MeshAdder, tableGroup: THREE.Group): void {
 function buildTableStools(
   table: CafeTable,
   addMesh: MeshAdder,
-  addShadow: ShadowAdder,
   group: THREE.Group,
 ): void {
   const colors = ['#f4a261', '#8ab17d', '#e76f51', '#2a9d8f']
@@ -603,7 +738,6 @@ function buildTableStools(
     const stoolGroup = new THREE.Group()
     stoolGroup.position.set(seat.x, 0, seat.z)
     group.add(stoolGroup)
-    addShadow(seat.x, seat.z, 2.4, 2.4, PATIO_HEIGHT + 0.003, 2)
     const color = colors[(table.id * 3 + seatIdx) % colors.length]
     addMesh(
       new THREE.CylinderGeometry(0.72, 0.72, 0.16, 24),
@@ -643,16 +777,11 @@ function buildTableStools(
   }
 }
 
-function buildBreakBench(
-  addMesh: MeshAdder,
-  addShadow: ShadowAdder,
-  group: THREE.Group,
-): void {
+function buildBreakBench(addMesh: MeshAdder, group: THREE.Group): void {
   const benchGroup = new THREE.Group()
   benchGroup.position.set(CAFE_BREAK_BENCH.x, 0, -3.8)
   benchGroup.rotation.y = CAFE_BREAK_BENCH.heading
   group.add(benchGroup)
-  addShadow(CAFE_BREAK_BENCH.x, -3.8, 4.2, 2.2, PATIO_HEIGHT + 0.003, 2)
   addMesh(
     new THREE.BoxGeometry(3.4, 0.16, 1.1),
     '#875b3c',
@@ -696,11 +825,10 @@ export function createCafeScenery(bend: BendUniforms): THREE.Group {
   const addMesh = createMeshAdder(getMat, group)
   const addShadow = createShadowAdder(bend, group)
 
-  buildPatioDeck(addMesh, addShadow, group, getMat)
-  buildKioskStructure(addMesh, addShadow, group, bend)
-  for (const table of CAFE_TABLES)
-    buildOutdoorTable(table, addMesh, addShadow, group)
-  buildBreakBench(addMesh, addShadow, group)
+  buildPatioDeck(addMesh, addShadow, group, getMat, bend)
+  buildKioskStructure(addMesh, group, bend)
+  for (const table of CAFE_TABLES) buildOutdoorTable(table, addMesh, group)
+  buildBreakBench(addMesh, group)
   return group
 }
 

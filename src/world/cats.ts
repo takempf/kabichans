@@ -327,7 +327,7 @@ export class CatRenderer {
     })
     this.add(tail, tailMaterial(bend), 'tail')
     const shadowMesh = this.add(
-      new THREE.PlaneGeometry(2.3, 1.65).rotateX(-Math.PI / 2),
+      new THREE.PlaneGeometry(2.3, 1.65, 4, 4).rotateX(-Math.PI / 2),
       bendMaterial(
         new THREE.MeshBasicMaterial({
           map: shadowTexture(),
@@ -338,7 +338,7 @@ export class CatRenderer {
       ),
       'shadow',
     )
-    shadowMesh.renderOrder = 2
+    shadowMesh.renderOrder = 3
     const vomitMaterial = material('#aca267')
     this.droplets = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.045, 6, 4),
@@ -688,7 +688,7 @@ export class CatRenderer {
         if (kind === 'shadow') {
           const onTerrace = isOnCafeTerrace(cat.x, cat.z)
           const groundY = onTerrace
-            ? PATIO_HEIGHT + 0.03
+            ? PATIO_HEIGHT + 0.003
             : groundHeight(cat.x, cat.z) + 0.025
           const shadowScale = isHidden(cat) ? 0 : cat.scale
           this.local.position.set(cat.x, groundY, cat.z)
