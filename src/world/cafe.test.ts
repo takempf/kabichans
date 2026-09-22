@@ -241,5 +241,14 @@ describe('meadow cafe', { timeout: 120000 }, () => {
     expect(snapshot.cafeQueue).not.toBe(simulation.cafeQueue)
     expect(Array.isArray(snapshot.deliveredFoods)).toBe(true)
     expect(Array.isArray(snapshot.carriedItems)).toBe(true)
+    expect(new Set(simulation.cafeQueue)).toEqual(simulation.cafeQueueSet)
+  })
+
+  it('maintains cafeQueueSet in lockstep with cafeQueue across additions and removals', () => {
+    const simulation = new Simulation()
+    for (let frame = 0; frame < 500; frame++) {
+      simulation.step(0.1)
+      expect(new Set(simulation.cafeQueue)).toEqual(simulation.cafeQueueSet)
+    }
   })
 })

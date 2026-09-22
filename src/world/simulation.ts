@@ -70,6 +70,7 @@ export type {
   CafeWorkerCarriedItem,
 } from './cafe'
 export const CAFE_WORKER_IDS = [4, 5, 6] as const
+const cafeObstacleSet = new Set<Obstacle>(cafeObstacles)
 
 export const CAT_COUNT = 100
 // Covers the broad head, raised arms, and swaying tail at the model's base scale.
@@ -501,6 +502,7 @@ export class Simulation {
   }))
   // Cat ids in line for the counter, front first.
   readonly cafeQueue: number[] = []
+  readonly cafeQueueSet = new Set<number>()
   readonly cafeSeats: CafeSeatState[] = ALL_CAFE_SEATS.map((seat, index) => ({
     index,
     tableId: seat.tableId,
@@ -1825,7 +1827,9 @@ export class Simulation {
         cat.objective.kind !== 'cottage' &&
         cat.conversationId === null &&
         this.elapsed >= cat.nextVomitAt &&
-        ['wandering', 'socializing', 'sitting'].includes(cat.activity)
+        (cat.activity === 'wandering' ||
+          cat.activity === 'socializing' ||
+          cat.activity === 'sitting')
       ) {
         const point = this.privateSpot(cat)
         if (point) {
@@ -1957,14 +1961,14 @@ export class Simulation {
           cat.conversationId === null
         const gx = dx / distance,
           gz = dz / distance
+        const catInQueue = this.cafeQueueSet.has(cat.id)
         for (const other of this.cats) {
           if (other.id === cat.id || sharesSpace(cat, other)) continue
           const ox = cat.x - other.x,
             oz = cat.z - other.z
           const d = Math.hypot(ox, oz)
           // Customers stand close together in line.
-          const inLine =
-            this.cafeQueue.includes(cat.id) && this.cafeQueue.includes(other.id)
+          const inLine = catInQueue && this.cafeQueueSet.has(other.id)
           const touching = bodyRadius(cat) + bodyRadius(other)
           const personalSpace = touching + (inLine ? 0.08 : 0.4)
           if (d < personalSpace && d > 0.01) {
@@ -1999,7 +2003,7 @@ export class Simulation {
             oz = cat.z - o.z,
             d = Math.hypot(ox, oz)
           // Small cafe props: keep a narrow buffer beyond the body, never contact.
-          const avoidanceMargin = cafeObstacles.includes(o)
+          const avoidanceMargin = cafeObstacleSet.has(o)
             ? bodyRadius(cat) + 0.3
             : 1.7
           if (d < o.radius + avoidanceMargin && d > 0.01) {
@@ -3282,7 +3286,7 @@ export class Simulation {
     cat.objective = null
     this.startActivity(cat, 'wandering', 0)
     const place = this.cafeWaitingCount()
-    this.cafeQueue.push(cat.id)
+    this.addToCafeQueue(cat.id)
     cat.cafeCustomer = {
       stage: 'joining',
       place,
@@ -3323,7 +3327,7 @@ export class Simulation {
       ...(avoidResidents
         ? this.nearbyBlockers(
             cat,
-            (other) => inLine && this.cafeQueue.includes(other.id),
+            (other) => inLine && this.cafeQueueSet.has(other.id),
           )
         : []),
     ]
@@ -3450,7 +3454,7 @@ export class Simulation {
     const customer = cat.cafeCustomer!
     customer.timer += dt
     this.followCafeRoute(cat)
-    if (this.cafeQueue.includes(cat.id)) {
+    if (this.cafeQueueSet.has(cat.id)) {
       // A last resort; the line normally keeps moving.
       if (
         customer.stage !== 'waiting' &&
@@ -3737,8 +3741,7 @@ export class Simulation {
   private leaveCafe(cat: Cat) {
     const customer = cat.cafeCustomer
     if (!customer) return
-    const place = this.cafeQueue.indexOf(cat.id)
-    if (place >= 0) this.cafeQueue.splice(place, 1)
+    this.removeFromCafeQueue(cat.id)
     const seat =
       customer.seatIndex === null ? null : this.cafeSeats[customer.seatIndex]
     if (seat?.occupantId === cat.id) {
@@ -4047,7 +4050,7 @@ export class Simulation {
     worker.customerId = null
     worker.idleTimer = 0
     cat.dialogue = null
-    this.cafeQueue.splice(this.cafeQueue.indexOf(customer.id), 1)
+    this.removeFromCafeQueue(customer.id)
     order.stage = 'carrying'
     order.timer = 0
     order.facing = null
@@ -4098,6 +4101,19 @@ export class Simulation {
     }
     if (this.workerAt(cat, CAFE_BREAK_BENCH, 0.8))
       this.startActivity(cat, 'sitting', 0)
+  }
+
+  private addToCafeQueue(id: number): void {
+    this.cafeQueue.push(id)
+    this.cafeQueueSet.add(id)
+  }
+
+  private removeFromCafeQueue(id: number): void {
+    const index = this.cafeQueue.indexOf(id)
+    if (index >= 0) {
+      this.cafeQueue.splice(index, 1)
+      this.cafeQueueSet.delete(id)
+    }
   }
 
   getCarriedItems(): CafeWorkerCarriedItem[] {
