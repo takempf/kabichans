@@ -162,6 +162,9 @@ button svg {
   position: absolute;
   top: 0;
   left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 36px;
   min-height: 30px;
   padding: 4px 10px 6px;
@@ -215,9 +218,12 @@ button svg {
   display: block;
   pointer-events: none;
   width: max-content;
-  max-width: calc(min(230px, calc(100vw - 56px)) - 26px);
+  max-width: calc(min(230px, calc(100vw - 56px)) - 30px);
   margin: 0 auto;
+  text-align: center;
   white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 .speech-bubble-text.is-swapping {
   animation: speech-text-swap 200ms ease-out both;

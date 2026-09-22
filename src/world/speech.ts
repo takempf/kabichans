@@ -86,6 +86,8 @@ export class SpeechBubbles {
   private bubbles = new Map<number, Bubble>()
   private projected = new Vector3()
   private viewportWidth = 0
+  private viewportHeight = 0
+  private fontsLoaded = false
 
   constructor(
     private host: HTMLElement,
@@ -94,6 +96,11 @@ export class SpeechBubbles {
     this.layer.className = 'speech-layer'
     this.layer.setAttribute('aria-label', 'Kabichan conversations')
     host.appendChild(this.layer)
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      void document.fonts.ready.then(() => {
+        this.fontsLoaded = true
+      })
+    }
   }
 
   update(
@@ -104,8 +111,14 @@ export class SpeechBubbles {
   ): void {
     const width = this.host.clientWidth,
       height = this.host.clientHeight
-    const resized = width !== this.viewportWidth
+    const resized =
+      width !== this.viewportWidth || height !== this.viewportHeight
     this.viewportWidth = width
+    this.viewportHeight = height
+    const fontReady = this.fontsLoaded
+    if (fontReady) {
+      this.fontsLoaded = false
+    }
     const active = new Set<number>()
     const now = performance.now()
 
@@ -159,7 +172,7 @@ export class SpeechBubbles {
           ? `${cat.name} says: ${text} Click to toggle conversation.`
           : `Listen to ${cat.name}'s conversation`,
       )
-      if (bubble.text !== text || resized) {
+      if (bubble.text !== text || resized || fontReady) {
         const isTextChange = bubble.text !== '' && bubble.text !== text
         bubble.text = text
         bubble.textSpan.textContent = text
@@ -170,6 +183,7 @@ export class SpeechBubbles {
           bubble.textSpan.classList.add('is-swapping')
         }
 
+        button.style.transition = 'none'
         button.style.width = ''
         button.style.height = ''
         const targetWidth = button.offsetWidth
@@ -183,9 +197,11 @@ export class SpeechBubbles {
           button.style.width = `${bubble.width}px`
           button.style.height = `${bubble.height}px`
           void button.offsetWidth
+          button.style.transition = ''
           button.style.width = `${targetWidth}px`
           button.style.height = `${targetHeight}px`
         } else {
+          button.style.transition = ''
           button.style.width = `${targetWidth}px`
           button.style.height = `${targetHeight}px`
         }
