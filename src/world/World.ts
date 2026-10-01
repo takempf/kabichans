@@ -27,6 +27,15 @@ import { SkyRenderer } from './sky'
 
 const MAX_RENDER_HEIGHT = 480
 const DEFAULT_CAMERA_ZOOM = 1.3
+const MIN_CAMERA_ZOOM = 0.52
+const MAX_CAMERA_ZOOM = 1.7
+// How far a press may wander, in pixels, before it pans instead of picking.
+// Fingertips jitter more than a mouse does.
+const MOUSE_TAP_SLOP = 5
+const TOUCH_TAP_SLOP = 12
+// Two fingers travel together this far before a pinch starts panning, so a
+// pinch while following a cat keeps following.
+const PINCH_PAN_SLOP = 16
 export const DEFAULT_CURVATURE = 0.004
 const AIM_DOT_COUNT = 20
 const FLYING_TREAT_HEIGHT_BASE = 2.2
@@ -34,6 +43,15 @@ const FLYING_TREAT_HEIGHT_VARIATION = 0.8
 const FLYING_TREAT_DURATION_BASE = 0.48
 const FLYING_TREAT_DURATION_VARIATION = 0.1
 const TOSS_ORIGIN_FORWARD_OFFSET = 3.5
+
+// Capture fails for a pointer that has already lifted; the press works anyway.
+function capturePointer(element: Element, pointerId: number): void {
+  try {
+    element.setPointerCapture(pointerId)
+  } catch {
+    // Nothing left to capture.
+  }
+}
 
 export interface WorldOptions {
   paused: boolean
@@ -124,7 +142,24 @@ export class CatWorld {
   private frame = 0
   private previous = 0
   private lastSnapshot = 0
-  private drag: { x: number; y: number; distance: number } | null = null
+  private drag: {
+    x: number
+    y: number
+    distance: number
+    slop: number
+  } | null = null
+  // Every press that began on the world, so a second finger becomes a pinch.
+  private pointers = new Map<number, { x: number; y: number }>()
+  // Lives from the second finger landing until every finger has lifted.
+  private pinch: {
+    distance: number
+    zoom: number
+    x: number
+    y: number
+    panning: boolean
+  } | null = null
+  // Safari's own pinch, from a trackpad or an iPhone.
+  private gestureZoom: number | null = null
   private projected = new THREE.Vector3()
   private treatPiece = new THREE.Object3D()
   private onSnapshot: (snapshot: UISnapshot) => void
@@ -158,7 +193,7 @@ export class CatWorld {
     this.renderer.toneMappingExposure = 1.13
     this.renderer.domElement.setAttribute(
       'aria-label',
-      'Interactive 3D meadow with 100 cats. Drag or use arrow keys to explore, scroll to zoom, and click a cat to meet them.',
+      'Interactive 3D meadow with 100 cats. Drag or use arrow keys to explore, scroll or pinch to zoom, and click a cat to meet them.',
     )
     this.renderer.domElement.setAttribute('role', 'img')
     this.renderer.domElement.tabIndex = 0
@@ -319,26 +354,54 @@ export class CatWorld {
 
   private bindControls() {
     const canvas = this.renderer.domElement,
+      host = this.host,
       signal = this.controller.signal
-    canvas.addEventListener(
+    // The host also holds the speech bubbles, so a finger resting on one still
+    // counts toward a pinch. Only presses on the canvas pan, pick, aim treats,
+    // or steer the laser.
+    host.addEventListener(
       'pointerdown',
       (event) => {
         if (event.button !== 0) return
-        canvas.focus()
-        canvas.setPointerCapture(event.pointerId)
+        this.pointers.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        })
+        if (this.pointers.size > 1) {
+          this.startPinch()
+          return
+        }
+        if (event.target !== canvas) return
+        canvas.focus({ preventScroll: true })
+        capturePointer(canvas, event.pointerId)
         if (this.holdingTreats) {
           this.startTossAim(event.clientX, event.clientY)
         } else if (this.laserActive) {
           this.updateLaserPoint(event.clientX, event.clientY)
         } else {
-          this.drag = { x: event.clientX, y: event.clientY, distance: 0 }
+          this.drag = {
+            x: event.clientX,
+            y: event.clientY,
+            distance: 0,
+            slop:
+              event.pointerType === 'mouse' ? MOUSE_TAP_SLOP : TOUCH_TAP_SLOP,
+          }
         }
       },
       { signal },
     )
-    canvas.addEventListener(
+    host.addEventListener(
       'pointermove',
       (event) => {
+        const pointer = this.pointers.get(event.pointerId)
+        if (pointer) {
+          pointer.x = event.clientX
+          pointer.y = event.clientY
+        }
+        if (this.pinch) {
+          if (pointer) this.updatePinch()
+          return
+        }
         if (this.laserActive) {
           this.updateLaserPoint(event.clientX, event.clientY)
           return
@@ -351,59 +414,77 @@ export class CatWorld {
         const dx = event.clientX - this.drag.x,
           dy = event.clientY - this.drag.y
         this.drag.distance += Math.abs(dx) + Math.abs(dy)
-        if (this.drag.distance > 5) {
-          this.onManualMove()
-          this.options.follow = false
-          this.target.x -= dx * 0.04 * this.zoom
-          this.target.y -= dy * 0.065 * this.zoom
-          this.clampTarget()
-        }
+        if (this.drag.distance > this.drag.slop) this.pan(dx, dy)
         this.drag.x = event.clientX
         this.drag.y = event.clientY
       },
       { signal },
     )
-    canvas.addEventListener(
+    // Lifts are heard on the window, so a finger released over the toolbar, or
+    // over a speech bubble that has since faded, is never left behind.
+    window.addEventListener(
       'pointerup',
-      (event) => {
-        if (canvas.hasPointerCapture(event.pointerId)) {
-          canvas.releasePointerCapture(event.pointerId)
-        }
-        if (this.holdingTreats && this.tossDrag) {
-          this.executeToss()
-          return
-        }
-        if (this.laserActive) {
-          return
-        }
-        if (this.drag && this.drag.distance < 6)
-          this.pick(event.clientX, event.clientY)
-        this.drag = null
-      },
+      (event) => this.releasePointer(event, false),
       { signal },
     )
-    canvas.addEventListener(
+    window.addEventListener(
       'pointercancel',
-      (event) => {
-        if (canvas.hasPointerCapture(event.pointerId)) {
-          canvas.releasePointerCapture(event.pointerId)
-        }
-        if (this.tossDrag) this.cancelToss()
-        this.drag = null
-      },
+      (event) => this.releasePointer(event, true),
       { signal },
     )
-    canvas.addEventListener(
+    host.addEventListener(
       'wheel',
       (event) => {
         event.preventDefault()
-        this.targetZoom = THREE.MathUtils.clamp(
-          this.targetZoom + event.deltaY * 0.001,
-          0.52,
-          1.7,
-        )
+        // Firefox may count whole lines or pages instead of pixels.
+        const delta =
+          event.deltaY *
+          (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? 16
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? 100
+              : 1)
+        if (!event.ctrlKey) {
+          this.zoomTo(this.targetZoom + delta * 0.001)
+        } else if (this.gestureZoom === null) {
+          // Trackpad pinches arrive as ctrl+wheel in Chrome, Edge, and Firefox,
+          // scaled to feel like a touch pinch.
+          this.zoomTo(
+            this.targetZoom *
+              Math.exp(THREE.MathUtils.clamp(delta, -25, 25) * 0.01),
+          )
+        }
       },
       { signal, passive: false },
+    )
+    // Safari reports trackpad and iOS pinches as gesture events, and would zoom
+    // the whole page with them.
+    host.addEventListener(
+      'gesturestart',
+      (event) => {
+        event.preventDefault()
+        this.gestureZoom = this.targetZoom
+      },
+      { signal },
+    )
+    host.addEventListener(
+      'gesturechange',
+      (event) => {
+        event.preventDefault()
+        const scale = (event as Event & { scale?: number }).scale
+        // On iOS the finger pinch already steers the camera.
+        if (this.gestureZoom !== null && !this.pinch && scale && scale > 0)
+          this.zoomTo(this.gestureZoom / scale)
+      },
+      { signal },
+    )
+    host.addEventListener(
+      'gestureend',
+      (event) => {
+        event.preventDefault()
+        this.gestureZoom = null
+      },
+      { signal },
     )
     window.addEventListener(
       'keydown',
@@ -455,6 +536,9 @@ export class CatWorld {
       () => {
         this.keys.clear()
         this.drag = null
+        this.pointers.clear()
+        this.pinch = null
+        this.gestureZoom = null
       },
       { signal },
     )
@@ -514,12 +598,92 @@ export class CatWorld {
     this.onSelect(closest)
   }
 
-  zoomBy(direction: number) {
+  private releasePointer(event: PointerEvent, cancelled: boolean): void {
+    if (!this.pointers.delete(event.pointerId)) return
+    if (this.pinch) {
+      // A finger left behind after a pinch waits to lift; it never pans or picks.
+      if (this.pointers.size === 0) this.pinch = null
+      else if (this.pointers.size > 1) this.startPinch()
+      return
+    }
+    if (cancelled) {
+      if (this.tossDrag) this.cancelToss()
+      this.drag = null
+      return
+    }
+    if (this.holdingTreats && this.tossDrag) {
+      this.executeToss()
+      return
+    }
+    if (this.laserActive) return
+    if (this.drag && this.drag.distance <= this.drag.slop)
+      this.pick(event.clientX, event.clientY)
+    this.drag = null
+  }
+
+  // A second finger turns whatever the first was doing into a pinch: it
+  // zooms, and pans once both fingers travel together. Any half-aimed toss is
+  // dropped rather than thrown.
+  private startPinch(): void {
+    this.drag = null
+    if (this.tossDrag) this.cancelToss()
+    // Keep every finger reporting here, even one that started on a speech
+    // bubble; this also stops that bubble from toggling when it lifts.
+    for (const id of this.pointers.keys()) capturePointer(this.host, id)
+    const { distance, x, y } = this.pinchSpan()
+    this.pinch = {
+      distance,
+      zoom: this.targetZoom,
+      x,
+      y,
+      panning: this.pinch?.panning ?? false,
+    }
+  }
+
+  private updatePinch(): void {
+    if (!this.pinch || this.pointers.size < 2) return
+    const { distance, x, y } = this.pinchSpan()
+    this.zoomTo((this.pinch.zoom * this.pinch.distance) / distance)
+    if (this.pinch.panning) {
+      this.pan(x - this.pinch.x, y - this.pinch.y)
+    } else if (
+      Math.hypot(x - this.pinch.x, y - this.pinch.y) > PINCH_PAN_SLOP
+    ) {
+      this.pinch.panning = true
+    } else {
+      return
+    }
+    this.pinch.x = x
+    this.pinch.y = y
+  }
+
+  private pinchSpan(): { distance: number; x: number; y: number } {
+    const [a, b] = this.pointers.values()
+    return {
+      distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+    }
+  }
+
+  private pan(dx: number, dy: number): void {
+    this.onManualMove()
+    this.options.follow = false
+    this.target.x -= dx * 0.04 * this.zoom
+    this.target.y -= dy * 0.065 * this.zoom
+    this.clampTarget()
+  }
+
+  private zoomTo(zoom: number): void {
     this.targetZoom = THREE.MathUtils.clamp(
-      this.targetZoom + direction * 0.16,
-      0.52,
-      1.7,
+      zoom,
+      MIN_CAMERA_ZOOM,
+      MAX_CAMERA_ZOOM,
     )
+  }
+
+  zoomBy(direction: number) {
+    this.zoomTo(this.targetZoom + direction * 0.16)
   }
   home() {
     this.options.follow = false

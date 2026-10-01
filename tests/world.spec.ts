@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
 
+interface Point {
+  x: number
+  y: number
+}
+
 test('renders the meadow and supports the main simulation controls', async ({
   page,
 }) => {
@@ -179,3 +184,101 @@ test('treat hand cursor follows pointer and updates aiming state', async ({
   }
   expect(errors).toEqual([])
 })
+
+test.describe('on a phone', () => {
+  test.use({
+    viewport: { width: 412, height: 839 },
+    hasTouch: true,
+    isMobile: true,
+  })
+
+  test('pinching zooms the meadow, never the page', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto('/')
+    await expect(page.locator('.explore-hint')).toContainText('Pinch to zoom')
+    await page.getByRole('button', { name: 'Follow this little friend' }).tap()
+    await expect(
+      page.getByRole('button', { name: 'Following along' }),
+    ).toBeVisible()
+
+    const client = await page.context().newCDPSession(page)
+    const pinch = async (a: Point, b: Point) => {
+      const spread = (step: number) => [
+        { x: a.x, y: a.y - step * 8, id: 1 },
+        { x: b.x, y: b.y + step * 8, id: 2 },
+      ]
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: spread(0),
+      })
+      for (let step = 1; step <= 8; step++)
+        await client.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: spread(step),
+        })
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchEnd',
+        touchPoints: [],
+      })
+    }
+    const shell = (await page.locator('.world-shell').boundingBox())!
+    const x = shell.x + shell.width / 2
+    const y = shell.y + shell.height * 0.4
+    await pinch({ x, y: y - 30 }, { x, y: y + 30 })
+    expect(await page.evaluate(() => window.visualViewport?.scale)).toBe(1)
+    // A pinch zooms without dropping the cat being followed.
+    await expect(
+      page.getByRole('button', { name: 'Following along' }),
+    ).toBeVisible()
+
+    // A finger that lands on an overlay doesn't zoom the page either.
+    const card = (await page.locator('.resident-card').boundingBox())!
+    await pinch({ x: card.x + card.width / 2, y: card.y + 20 }, { x, y })
+    expect(await page.evaluate(() => window.visualViewport?.scale)).toBe(1)
+    expect(errors).toEqual([])
+  })
+})
+
+for (const [width, height] of [
+  [844, 390],
+  [568, 320],
+]) {
+  test(`a phone on its side fits ${width}×${height} without scrolling`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height })
+    await page.goto('/')
+    await expect(
+      page.getByRole('button', { name: 'Drop a treat' }),
+    ).toBeEnabled()
+    const layout = await page.evaluate(() => {
+      const shell = document.querySelector('.world-shell')!
+      const overlays = [
+        '.resident-card',
+        '.world-toolbar',
+        '.weather',
+        '.camera-controls',
+        '.minimap',
+        '.explore-hint',
+      ]
+        .map((selector) => document.querySelector(selector))
+        .filter((el): el is Element => !!el && el.checkVisibility())
+        .map((el) => el.getBoundingClientRect())
+      const bounds = shell.getBoundingClientRect()
+      const overlaps = (a: DOMRect, b: DOMRect) =>
+        Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+        Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1
+      return {
+        scroll: document.documentElement.scrollHeight - window.innerHeight,
+        outside: overlays.filter(
+          (box) => box.top < bounds.top - 1 || box.bottom > bounds.bottom + 1,
+        ).length,
+        collisions: overlays.filter((a, i) =>
+          overlays.slice(i + 1).some((b) => overlaps(a, b)),
+        ).length,
+      }
+    })
+    expect(layout).toEqual({ scroll: 0, outside: 0, collisions: 0 })
+  })
+}

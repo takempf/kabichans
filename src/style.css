@@ -30,6 +30,8 @@ button,
 a,
 input {
   -webkit-tap-highlight-color: transparent;
+  /* No double-tap page zoom when a button is tapped twice quickly. */
+  touch-action: manipulation;
 }
 button,
 input {
@@ -73,6 +75,7 @@ button svg {
   flex-shrink: 0;
 }
 .app {
+  height: 100vh;
   height: 100dvh;
   min-height: 640px;
   display: flex;
@@ -122,8 +125,10 @@ button svg {
   border-radius: 50%;
   color: #64745f;
 }
-.icon-button:hover {
-  background: #e8ecdf;
+@media (hover: hover) {
+  .icon-button:hover {
+    background: #e8ecdf;
+  }
 }
 .world-shell {
   position: relative;
@@ -135,6 +140,11 @@ button svg {
   background: #c5ded0;
   border: 1px solid #d7dfc4;
   box-shadow: 0 3px 10px #344d3710;
+  /* Pinches and drags anywhere on the meadow belong to the camera, not the
+     page, and a long press never selects text or opens a callout. */
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .world-canvas {
   position: absolute;
@@ -244,10 +254,15 @@ button svg {
     animation: none;
   }
 }
-.speech-bubble:hover,
 .speech-bubble:focus-visible {
   outline: 2px solid #fff9ed;
   outline-offset: 3px;
+}
+@media (hover: hover) {
+  .speech-bubble:hover {
+    outline: 2px solid #fff9ed;
+    outline-offset: 3px;
+  }
 }
 .emote-layer {
   position: absolute;
@@ -338,8 +353,10 @@ button svg {
   backdrop-filter: blur(12px);
   text-align: left;
 }
-.weather:hover {
-  background: #fffdef;
+@media (hover: hover) {
+  .weather:hover {
+    background: #fffdef;
+  }
 }
 .weather-icon {
   color: #b6954f;
@@ -403,9 +420,11 @@ button svg {
     color 0.15s ease,
     transform 0.1s ease;
 }
-.tiny-button:hover {
-  background: #e6e9d9;
-  color: #555f46;
+@media (hover: hover) {
+  .tiny-button:hover {
+    background: #e6e9d9;
+    color: #555f46;
+  }
 }
 .tiny-button:active {
   transform: scale(0.92);
@@ -435,11 +454,13 @@ button svg {
     box-shadow 0.15s ease,
     color 0.15s ease;
 }
-.spotlight-open-button:hover {
-  background: #ffffff;
-  transform: translateY(-1px);
-  box-shadow: 0 7px 28px #324f372c;
-  color: #3b462c;
+@media (hover: hover) {
+  .spotlight-open-button:hover {
+    background: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 7px 28px #324f372c;
+    color: #3b462c;
+  }
 }
 .spotlight-open-button:active {
   transform: translateY(0) scale(0.97);
@@ -448,9 +469,11 @@ button svg {
   color: #8f9b7c;
   transition: transform 0.15s ease;
 }
-.spotlight-open-button:hover .spotlight-open-arrow {
-  transform: translateX(2px);
-  color: #5b674b;
+@media (hover: hover) {
+  .spotlight-open-button:hover .spotlight-open-arrow {
+    transform: translateX(2px);
+    color: #5b674b;
+  }
 }
 .resident-main {
   display: flex;
@@ -550,9 +573,13 @@ button svg {
 .follow-button > svg:first-child {
   margin-right: auto;
 }
-.follow-button:hover,
 .follow-button.is-following {
   background: #d8e3c7;
+}
+@media (hover: hover) {
+  .follow-button:hover {
+    background: #d8e3c7;
+  }
 }
 .bottom-center {
   position: absolute;
@@ -634,8 +661,10 @@ button svg {
   display: grid;
   place-items: center;
 }
-.play-button:hover {
-  background: #5b7d54;
+@media (hover: hover) {
+  .play-button:hover {
+    background: #5b7d54;
+  }
 }
 .play-button svg {
   width: 13px;
@@ -647,8 +676,10 @@ button svg {
   height: 33px;
   border-radius: 8px;
 }
-.speed-button:hover {
-  background: #e9ecdb;
+@media (hover: hover) {
+  .speed-button:hover {
+    background: #e9ecdb;
+  }
 }
 .treat-button {
   display: flex;
@@ -668,8 +699,10 @@ button svg {
   color: #a3a389;
   margin-left: 6px;
 }
-.treat-button:hover {
-  background: #f0ecda;
+@media (hover: hover) {
+  .treat-button:hover {
+    background: #f0ecda;
+  }
 }
 .treat-button.is-active {
   background: #fbf5e6;
@@ -774,13 +807,15 @@ button svg {
   color: #e57373;
   transition: transform 0.2s ease;
 }
-.laser-button:hover {
-  background: #fdf0f0;
-  color: #c62828;
-}
-.laser-button:hover > svg {
-  color: #d32f2f;
-  transform: scale(1.1);
+@media (hover: hover) {
+  .laser-button:hover {
+    background: #fdf0f0;
+    color: #c62828;
+  }
+  .laser-button:hover > svg {
+    color: #d32f2f;
+    transform: scale(1.1);
+  }
 }
 .laser-button.is-active {
   background: #ffebee;
@@ -961,6 +996,7 @@ button svg {
   color: #40543d;
   box-shadow: 0 24px 100px #213c3340;
   width: min(440px, calc(100vw - 30px));
+  max-height: 85vh;
   max-height: 85dvh;
 }
 .dialog::backdrop {
@@ -1094,8 +1130,10 @@ input[type='range'] {
   padding: 13px 20px;
   font-size: 12px;
 }
-.primary-button:hover {
-  background: #63815b;
+@media (hover: hover) {
+  .primary-button:hover {
+    background: #63815b;
+  }
 }
 .full-width {
   width: 100%;
@@ -1156,8 +1194,10 @@ input[type='range'] {
   padding: 9px;
   text-align: left;
 }
-.resident-option:hover {
-  background: #eaf0df;
+@media (hover: hover) {
+  .resident-option:hover {
+    background: #eaf0df;
+  }
 }
 .small-portrait {
   width: 42px;
@@ -1585,6 +1625,52 @@ input[type='range'] {
   .map-legend {
     font-size: 9px;
     gap: 6px;
+  }
+}
+/* A phone on its side: drop the tall minimum, slim the header, and tuck the
+   overlays below the weather so everything fits without scrolling. */
+@media (max-height: 500px) {
+  .app {
+    min-height: 0;
+    padding: 0 9px 9px;
+  }
+  .header {
+    height: 52px;
+    padding: 0 9px;
+  }
+  .brand {
+    font-size: 22px;
+    gap: 9px;
+  }
+  .brand-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+  }
+  .brand-icon svg {
+    width: 21px;
+  }
+  .weather {
+    top: 14px;
+    right: 22px;
+    left: auto;
+  }
+  .minimap,
+  .explore-hint {
+    display: none;
+  }
+}
+@media (max-height: 500px) and (max-width: 900px) {
+  .resident-card,
+  .spotlight-open-button,
+  .right-controls {
+    bottom: 88px;
+  }
+}
+@media (pointer: coarse) {
+  /* iOS zooms the whole page into any focused field smaller than 16px. */
+  .search-input input {
+    font-size: 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

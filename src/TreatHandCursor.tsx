@@ -4,6 +4,7 @@ import type { CSSProperties, JSX } from 'react'
 export interface TreatHandCursorProps {
   readonly active: boolean
   readonly isAiming: boolean
+  readonly touch?: boolean
 }
 
 const CURSOR_OFFSET_X = 18
@@ -13,6 +14,7 @@ const VIEWBOX_SIZE = 64
 export function TreatHandCursor({
   active,
   isAiming,
+  touch = false,
 }: TreatHandCursorProps): JSX.Element | null {
   const cursorRef = useRef<HTMLDivElement>(null)
   const lastPositionRef = useRef<{ x: number; y: number } | null>(null)
@@ -24,6 +26,8 @@ export function TreatHandCursor({
     }
 
     const handlePointerMove = (e: PointerEvent): void => {
+      // During a pinch, stay with the first finger instead of hopping between.
+      if (!e.isPrimary) return
       lastPositionRef.current = { x: e.clientX, y: e.clientY }
       const el = cursorRef.current
       if (el) {
@@ -60,7 +64,13 @@ export function TreatHandCursor({
         <TreatHandSvg isAiming={isAiming} />
       </div>
       <div className="treat-hand-badge">
-        <span>{isAiming ? 'Release to toss!' : 'Click & drag to toss'}</span>
+        <span>
+          {isAiming
+            ? 'Release to toss!'
+            : touch
+              ? 'Drag to toss'
+              : 'Click & drag to toss'}
+        </span>
       </div>
     </div>
   )

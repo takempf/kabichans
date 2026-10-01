@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowUpRight,
@@ -17,6 +24,7 @@ import {
   Pause,
   Play,
   Plus,
+  Pointer,
   Search,
   Settings2,
   Shuffle,
@@ -36,6 +44,16 @@ import { BRIDGE, CREEK_WIDTH, creekX, meadowPathX } from './world/terrain'
 import { CAT_COAT_GRADIENT, CAT_COLORS, catFacePaint } from './world/catArtwork'
 
 const portraitPaint = catFacePaint()
+
+// Phones and tablets get tap-and-pinch wording instead of click-and-scroll.
+const coarsePointer = window.matchMedia('(pointer: coarse)')
+function subscribeToPointer(onChange: () => void): () => void {
+  coarsePointer.addEventListener('change', onChange)
+  return () => coarsePointer.removeEventListener('change', onChange)
+}
+function useTouchScreen(): boolean {
+  return useSyncExternalStore(subscribeToPointer, () => coarsePointer.matches)
+}
 
 function CatPortrait({ shirt = '#a7b991' }: { shirt?: string }) {
   const faceClip = useId()
@@ -406,6 +424,8 @@ export default function App() {
     undefined,
   )
   const stopFollowing = useCallback(() => setFollow(false), [])
+  const touch = useTouchScreen()
+  const tap = touch ? 'Tap' : 'Click'
 
   useEffect(() => {
     if (!host.current) return
@@ -533,7 +553,11 @@ export default function App() {
           holdingTreats ? 'is-holding-treats' : ''
         } ${laserActive ? 'is-laser-active' : ''}`}
       >
-        <TreatHandCursor active={holdingTreats} isAiming={isAimingTreats} />
+        <TreatHandCursor
+          active={holdingTreats}
+          isAiming={isAimingTreats}
+          touch={touch}
+        />
         <div ref={host} className="world-canvas" data-testid="world" />
         <div className="world-vignette" />
         {!snapshot && !error && (
@@ -642,14 +666,14 @@ export default function App() {
                     : 'SAY HELLO'}
                 </span>
                 <h2>{cat?.name ?? 'Meet a neighbor'}</h2>
-                <p>{cat?.personality ?? 'Click any cat to get acquainted.'}</p>
+                <p>{cat?.personality ?? `${tap} any cat to get acquainted.`}</p>
               </div>
             </div>
             <div className="resident-activity">
               <span className={`activity-dot ${cat?.activity ?? ''}`} />
               {cat
                 ? residentActivity(cat, critter)
-                : 'A new friend is just a click away'}
+                : `A new friend is just a ${tap.toLowerCase()} away`}
             </div>
             <button
               className={`follow-button ${follow ? 'is-following' : ''}`}
@@ -665,8 +689,17 @@ export default function App() {
 
         <div className="bottom-center">
           <div className="explore-hint">
-            <MousePointer2 size={13} /> Drag to explore <span>·</span> Scroll to
-            zoom <span>·</span> Click a cat to say hello
+            {touch ? (
+              <>
+                <Pointer size={13} /> Drag to explore <span>·</span> Pinch to
+                zoom <span>·</span> Tap a cat to say hello
+              </>
+            ) : (
+              <>
+                <MousePointer2 size={13} /> Drag to explore <span>·</span>{' '}
+                Scroll to zoom <span>·</span> Click a cat to say hello
+              </>
+            )}
           </div>
           <nav className="world-toolbar" aria-label="Simulation controls">
             <button
@@ -716,7 +749,9 @@ export default function App() {
                 world.current?.setHoldingTreats(next)
                 if (next) {
                   notify(
-                    'Treats in hand. Click and drag in the meadow to toss!',
+                    touch
+                      ? 'Treats in hand. Drag in the meadow to toss!'
+                      : 'Treats in hand. Click and drag in the meadow to toss!',
                   )
                 }
               }}
@@ -739,7 +774,11 @@ export default function App() {
                 setLaserActive(next)
                 world.current?.setLaserActive(next)
                 if (next) {
-                  notify('Laser pointer on! Move your cursor to lead the cats.')
+                  notify(
+                    touch
+                      ? 'Laser pointer on! Drag your finger to lead the cats.'
+                      : 'Laser pointer on! Move your cursor to lead the cats.',
+                  )
                 }
               }}
               aria-label={
@@ -864,13 +903,21 @@ export default function App() {
       {dialog === 'help' && (
         <Dialog title="Stay a little while." close={() => setDialog(null)}>
           <div className="help-row">
-            <MousePointer2 />
+            {touch ? <Pointer /> : <MousePointer2 />}
             <div>
               <strong>Find your own little corner</strong>
-              <p>
-                Drag the meadow, or use WASD / arrow keys. Scroll or use + and −
-                to get closer.
-              </p>
+              {touch ? (
+                <p>
+                  Drag the meadow to look around, and pinch or use + and − to
+                  get closer. With treats or the laser out, drag with two
+                  fingers.
+                </p>
+              ) : (
+                <p>
+                  Drag the meadow, or use WASD / arrow keys. Scroll or use + and
+                  − to get closer.
+                </p>
+              )}
             </div>
           </div>
           <div className="help-row">
@@ -878,7 +925,7 @@ export default function App() {
             <div>
               <strong>Make a friend</strong>
               <p>
-                Click a cat to meet them. Follow along, or find someone in the
+                {tap} a cat to meet them. Follow along, or find someone in the
                 resident directory.
               </p>
             </div>
@@ -1004,7 +1051,7 @@ export default function App() {
           wide
         >
           <p className="dialog-intro">
-            Every dot is a neighbor. Click anywhere to wander over.
+            Every dot is a neighbor. {tap} anywhere to wander over.
           </p>
           <MiniMap
             snapshot={snapshot}
