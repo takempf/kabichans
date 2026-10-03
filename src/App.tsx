@@ -39,7 +39,14 @@ import { CatWorld, DEFAULT_CURVATURE, type UISnapshot } from './world/World'
 import { TreatHandCursor } from './TreatHandCursor'
 import type { Cat, Point, TimeOfDay } from './world/simulation'
 import { CAT_COUNT, RESIDENT_NAME } from './world/simulation'
-import { COTTAGE_SIZE, FENCE_BOUNDS, houses } from './world/geography'
+import {
+  COTTAGE_SIZE,
+  FENCE_BOUNDS,
+  JANITOR_CART,
+  OUTHOUSE_SIZE,
+  houses,
+  outhouses,
+} from './world/geography'
 import { BRIDGE, CREEK_WIDTH, creekX, meadowPathX } from './world/terrain'
 import { CAT_COAT_GRADIENT, CAT_COLORS, catFacePaint } from './world/catArtwork'
 
@@ -213,6 +220,25 @@ function MiniMap({
         (COTTAGE_SIZE.depth / worldDepth) * h,
       )
     }
+    // The litter box outhouses, and the janitors' cart beside them.
+    ctx.fillStyle = '#7db3c4'
+    for (const outhouse of outhouses)
+      ctx.fillRect(
+        mapX(outhouse.x - OUTHOUSE_SIZE.width / 2),
+        mapZ(outhouse.z - OUTHOUSE_SIZE.depth / 2),
+        (OUTHOUSE_SIZE.width / worldWidth) * w,
+        (OUTHOUSE_SIZE.depth / worldDepth) * h,
+      )
+    ctx.fillStyle = '#4b7399'
+    ctx.beginPath()
+    ctx.arc(
+      mapX(JANITOR_CART.x),
+      mapZ(JANITOR_CART.z),
+      (JANITOR_CART.radius / worldWidth) * w,
+      0,
+      Math.PI * 2,
+    )
+    ctx.fill()
     // Cafe patio on mini map
     ctx.fillStyle = '#dfd1b8'
     ctx.beginPath()
@@ -277,7 +303,7 @@ const activityLabels = {
   socializing: 'Making a new friend',
   conversing: 'Having a little discussion',
   snacking: 'On a snack adventure',
-  working: 'Working a shift at the cafe',
+  working: 'Working a shift',
   indoors: 'Inside a cottage',
 }
 
@@ -306,6 +332,34 @@ function residentActivity(
     return worker.role === 'barista'
       ? 'On duty at the cafe · Behind the counter'
       : 'On duty at the cafe · Server station'
+  }
+  if (cat.janitor) {
+    const janitor = cat.janitor
+    const job = janitor.job?.kind
+    if (janitor.state === 'reporting')
+      return 'Trotting to the janitor cart to start a shift'
+    if (janitor.state === 'returning')
+      return 'Shift’s nearly over · returning the scoop'
+    if (janitor.state === 'heading')
+      return job === 'outhouse'
+        ? 'On janitor duty · Off to scoop a litter box'
+        : 'On janitor duty · Off to mop up a puke spot'
+    if (janitor.state === 'cleaning' && job === 'puddle')
+      return 'On janitor duty · Scrubbing up a puke spot'
+    if (job === 'outhouse') return 'On janitor duty · Scooping out a litter box'
+    return 'On janitor duty · Waiting by the cart'
+  }
+  if (cat.outhouse) {
+    const visit = cat.outhouse
+    if (visit.stage === 'called') return 'Hurrying into the litter box'
+    if (visit.stage === 'entering') return 'Stepping into the litter box'
+    if (visit.stage === 'inside') return 'In the litter box · Occupied'
+    if (visit.stage === 'leaving')
+      return 'Stepping out of the litter box, much relieved'
+    if (visit.place === 0) return 'First in line for the litter box'
+    return visit.stage === 'waiting'
+      ? `In line for the litter box · ${visit.place} ahead`
+      : 'Hurrying to the litter box line'
   }
   if (cat.cafeCustomer) {
     const customer = cat.cafeCustomer

@@ -17,7 +17,7 @@ import {
   SNACK_REACH,
   VOMIT_EMIT_TIME,
 } from './simulation'
-import { isHidden, isOnShift } from './simulation'
+import { isHidden, isOnJanitorDuty, isOnShift, isScrubbing } from './simulation'
 import type { Butterfly, Cat, Point, Puddle } from './simulation'
 import { CAT_COLORS, CAT_FACE_EXPRESSIONS } from './catArtwork'
 import { groundHeight } from './terrain'
@@ -26,11 +26,12 @@ import { isOnCafeTerrace, PATIO_HEIGHT } from './cafeLayout'
 
 type PartKind =
   'body' | 'head' | 'armL' | 'armR' | 'legL' | 'legR' | 'tail' | 'shadow'
+type Uniform = 'cafe' | 'janitor'
 interface Part {
   mesh: THREE.InstancedMesh
   kind: PartKind
-  // Cafe uniform pieces only appear on cats working a shift.
-  uniform: boolean
+  // Uniform pieces only appear on cats working that kind of shift.
+  uniform: Uniform | null
 }
 const sphere = new THREE.SphereGeometry(1, 20, 14)
 function ellipsoid(
@@ -232,7 +233,7 @@ export class CatRenderer {
         .translate(0, 0.84, 0),
       apronGreen,
       'body',
-      true,
+      'cafe',
     )
     this.add(
       new THREE.TorusGeometry(0.4, 0.028, 6, 28)
@@ -241,7 +242,7 @@ export class CatRenderer {
         .translate(0, 0.79, 0),
       apronTrim,
       'body',
-      true,
+      'cafe',
     )
     this.add(
       new THREE.BoxGeometry(0.2, 0.12, 0.02)
@@ -249,7 +250,7 @@ export class CatRenderer {
         .translate(0, 0.72, 0.355),
       apronTrim,
       'body',
-      true,
+      'cafe',
     )
     this.add(
       combine([
@@ -262,13 +263,94 @@ export class CatRenderer {
       ]).rotateX(-0.12),
       apronGreen,
       'head',
-      true,
+      'cafe',
     )
     this.add(
       new THREE.SphereGeometry(0.045, 8, 6).translate(0, 0.77, 0.01),
       apronTrim,
       'head',
-      true,
+      'cafe',
+    )
+    // Janitor uniform: slate overalls over the shirt, a sunny bandana, yellow
+    // rubber gloves, and a litter scoop in the right paw.
+    const overalls = material('#4b7399', { side: THREE.DoubleSide })
+    const overallSeams = material('#3c5f80')
+    const sunny = material('#f0c24f')
+    this.add(
+      combine([
+        // Trousers all the way round, then a bib up the front.
+        new THREE.CylinderGeometry(0.39, 0.49, 0.36, 24, 1, true).translate(
+          0,
+          0.68,
+          0,
+        ),
+        new THREE.CylinderGeometry(
+          0.315,
+          0.394,
+          0.3,
+          12,
+          1,
+          true,
+          -0.68,
+          1.36,
+        ).translate(0, 0.99, 0),
+      ]).scale(1, 1, 0.8),
+      overalls,
+      'body',
+      'janitor',
+    )
+    this.add(
+      combine([
+        // Straps up over the shoulders, front and back, and a bib pocket.
+        ...[0.5, -0.5, Math.PI - 0.5, Math.PI + 0.5].map((angle) =>
+          new THREE.CylinderGeometry(
+            0.3,
+            0.39,
+            0.34,
+            2,
+            1,
+            true,
+            angle - 0.08,
+            0.16,
+          )
+            .scale(1.02, 1, 0.82)
+            .translate(0, 1.03, 0),
+        ),
+        new THREE.BoxGeometry(0.17, 0.11, 0.02)
+          .rotateX(-0.26)
+          .translate(0, 0.97, 0.3),
+      ]),
+      overallSeams,
+      'body',
+      'janitor',
+    )
+    this.add(
+      combine(
+        [-1, 1].map((side) =>
+          new THREE.SphereGeometry(0.035, 8, 6).translate(
+            side * 0.15,
+            1.1,
+            0.245,
+          ),
+        ),
+      ),
+      sunny,
+      'body',
+      'janitor',
+    )
+    this.add(
+      combine([
+        // A headscarf over the crown, knotted at the back.
+        new THREE.SphereGeometry(0.32, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2)
+          .scale(1, 0.62, 1.15)
+          .translate(0, 0.55, -0.02),
+        ellipsoid(0, 0.5, -0.56, 0.08, 0.07, 0.06),
+        ellipsoid(-0.06, 0.4, -0.6, 0.045, 0.1, 0.02).rotateZ(0.02),
+        ellipsoid(0.06, 0.4, -0.6, 0.045, 0.1, 0.02),
+      ]).rotateX(-0.1),
+      sunny,
+      'head',
+      'janitor',
     )
     const leaf = new THREE.Shape()
     leaf.moveTo(0, 0.79)
@@ -312,11 +394,40 @@ export class CatRenderer {
       )
       cats.forEach((c) => sleeve.setColorAt(c.id, new THREE.Color(c.shirt)))
       this.add(
+        combine([
+          ellipsoid(0, -0.43, 0, 0.13, 0.145, 0.135),
+          new THREE.CylinderGeometry(0.145, 0.13, 0.1, 14).translate(
+            0,
+            -0.31,
+            0,
+          ),
+        ]),
+        sunny,
+        `arm${side}`,
+        'janitor',
+      )
+      this.add(
         new THREE.CapsuleGeometry(0.12, 0.27, 6, 12).translate(0, -0.12, 0.025),
         cream,
         `leg${side}`,
       )
     }
+    // The scoop hangs from the right paw, blade down, ready to dig in.
+    this.add(
+      combine([
+        new THREE.CylinderGeometry(0.028, 0.028, 0.26, 6).translate(
+          0,
+          -0.56,
+          0,
+        ),
+        new THREE.BoxGeometry(0.26, 0.28, 0.025).translate(0, -0.8, 0.03),
+        new THREE.BoxGeometry(0.025, 0.28, 0.07).translate(-0.13, -0.8, 0.05),
+        new THREE.BoxGeometry(0.025, 0.28, 0.07).translate(0.13, -0.8, 0.05),
+      ]),
+      material('#7db3c4'),
+      'armR',
+      'janitor',
+    )
     const tail = tailGeometry()
     tail.setAttribute('tailMotion', this.tailMotion)
     this.tailMotion.setUsage(THREE.DynamicDrawUsage)
@@ -377,7 +488,7 @@ export class CatRenderer {
     geometry: THREE.BufferGeometry,
     material: THREE.Material,
     kind: PartKind,
-    uniform = false,
+    uniform: Uniform | null = null,
   ) {
     const mesh = new THREE.InstancedMesh(geometry, material, CAT_COUNT)
     mesh.name = `cat-${kind}`
@@ -433,11 +544,22 @@ export class CatRenderer {
         cat.activityTime < 3.5
           ? Math.sin((cat.activityTime - 0.7) * 8) ** 2
           : 0
+      // Waiting for the outhouse, shifting from paw to paw.
+      const fidget =
+        cat.outhouse?.stage === 'waiting' && !reducedMotion
+          ? Math.sin(time * 7 + cat.phase) * 0.22 * standing
+          : 0
       const swing =
         Math.sin(cat.gait) *
-        cat.walking *
-        (reducedMotion ? 0.15 : 0.45 + running * 0.35) *
-        standing
+          cat.walking *
+          (reducedMotion ? 0.15 : 0.45 + running * 0.35) *
+          standing +
+        fidget
+      // A janitor down on their knees, working the scoop back and forth.
+      const scrub =
+        isScrubbing(cat) && !reducedMotion
+          ? Math.sin(time * 8 + cat.phase) * kneel
+          : 0
       const bob = reducedMotion
         ? 0
         : (1 - Math.cos(cat.gait * 2)) *
@@ -659,7 +781,10 @@ export class CatRenderer {
       lookPitch = gaze[at + 2] + swayPitch * motion
       lookRoll = gaze[at + 4] + swayRoll * motion
       reach = Math.max(0, gaze[at + 6])
-      const onShift = isOnShift(cat)
+      const wearing: Record<Uniform, boolean> = {
+        cafe: isOnShift(cat),
+        janitor: isOnJanitorDuty(cat),
+      }
       const mood = tailMood(cat)
       const tailEase = 1 - Math.exp(-3 * dt)
       this.tailSpeeds[cat.id] = THREE.MathUtils.lerp(
@@ -771,6 +896,7 @@ export class CatRenderer {
               : Math.max(0, Math.sin(time * 9 + (s > 0 ? 0 : Math.PI)))
             this.local.rotation.x -= reach * (1.5 + swipe * 0.9)
           }
+          if (s > 0) this.local.rotation.x += scrub * 0.35
           if (s > 0) {
             this.local.rotation.z +=
               talking *
@@ -816,7 +942,8 @@ export class CatRenderer {
           )
           this.local.scale.y = 1 - 0.35 * sitting - 0.75 * lying
         }
-        if (part.uniform && !onShift) this.local.scale.setScalar(0)
+        if (part.uniform && !wearing[part.uniform])
+          this.local.scale.setScalar(0)
         this.local.updateMatrix()
         if (kind === 'head' && !part.uniform)
           this.headMatrix.copy(this.local.matrix)
@@ -881,7 +1008,11 @@ export class CatRenderer {
     for (let i = 0; i < this.puddles.count; i++) {
       const puddle = puddles[i]
       const age = time - puddle.createdAt
-      const size = puddle.scale * THREE.MathUtils.clamp(age * 5, 0, 1)
+      // Shrinking away under a janitor's scoop.
+      const size =
+        puddle.scale *
+        THREE.MathUtils.clamp(age * 5, 0, 1) *
+        (1 - puddle.scrubbed * 0.85)
       const groundY = isOnCafeTerrace(puddle.x, puddle.z)
         ? PATIO_HEIGHT + 0.003
         : groundHeight(puddle.x, puddle.z) + 0.035

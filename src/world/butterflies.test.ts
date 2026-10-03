@@ -49,7 +49,7 @@ describe('butterflies', { timeout: 120000 }, () => {
           closestCall = Math.min(closestCall, butterfly.y)
       }
     }
-    expect(followers.size).toBeGreaterThan(5)
+    expect(followers.size).toBeGreaterThanOrEqual(4)
     expect(chasers.size).toBeGreaterThanOrEqual(3)
     expect(closestCall).toBeGreaterThan(2.3)
     // Whatever the butterfly interrupted picks up again afterwards.

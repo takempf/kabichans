@@ -153,6 +153,9 @@ export function tailMood(cat: Cat) {
     return { speed: 0.65, amplitude: 0.035, lift: -0.06 }
   if (cat.butterflyId !== null || cat.snack?.stage === 'approaching')
     return { speed: 3.8, amplitude: 0.26, lift: 0.07 }
+  // Can't wait much longer for the outhouse.
+  if (cat.outhouse?.stage === 'waiting')
+    return { speed: 3.4, amplitude: 0.2, lift: 0.06 }
   if (cat.activity === 'socializing' || cat.activity === 'conversing')
     return { speed: 2.7, amplitude: 0.22, lift: 0.045 }
   if (cat.activity === 'snacking' || cat.cafeCustomer?.stage === 'eating')

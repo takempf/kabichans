@@ -6,12 +6,15 @@ import type { BendUniforms } from './materials'
 import { projectOverhead } from './speech'
 
 // A "!" when a cat notices they are about to be sick, a treat on the ground,
-// or a butterfly; a happy face once they've eaten a treat.
+// or a butterfly; a happy face once they've eaten a treat, a sigh of relief
+// stepping out of the outhouse, and a sparkle when a janitor finishes a scrub.
 const GLYPHS: Record<EmoteKind, string> = {
   queasy: '!',
   treat: '!',
   butterfly: '!',
   yum: '😋',
+  relieved: '😌',
+  sparkle: '✨',
 }
 
 interface Mark {

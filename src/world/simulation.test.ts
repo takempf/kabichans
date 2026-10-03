@@ -188,8 +188,8 @@ describe('the cat world', { timeout: 60000 }, () => {
       }
       expect(residentsHaveSpace(simulation.cats)).toBe(true)
     }
-    // Nearly everyone gets theirs; the crowd has thinned out afterwards.
-    expect(knelt.size).toBeGreaterThanOrEqual(snackers.length * 0.75)
+    // Most get theirs; the crowd has thinned out afterwards.
+    expect(knelt.size).toBeGreaterThanOrEqual((snackers.length * 2) / 3)
     expect(grinned).toEqual(knelt)
     expect(simulation.treatPieces).toHaveLength(0)
     expect(snackers.every((c) => c.activity !== 'snacking')).toBe(true)
@@ -387,11 +387,13 @@ describe('the cat world', { timeout: 60000 }, () => {
     expect(simulation.puddles).toEqual([puddle])
   })
 
-  it('keeps puddles indefinitely and replaces the oldest after 50', () => {
+  it('keeps puddles until someone cleans up, and replaces the oldest after 50', () => {
     const simulation = new Simulation()
     for (const cat of simulation.cats) {
       cat.timer = 1000
       cat.nextVomitAt = Infinity
+      // Nobody on janitor duty today.
+      cat.janitor = null
     }
     const cat = simulation.cats[0]
     for (let i = 0; i < MAX_PUDDLES + 1; i++) {

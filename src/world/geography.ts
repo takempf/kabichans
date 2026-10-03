@@ -84,6 +84,23 @@ export const houseObstacles: Obstacle[] = houses.flatMap((house) =>
     radius: 3.2,
   })),
 )
+// Two litter box outhouses in the back corner, built like hooded litter boxes
+// at cat scale, with their doors facing south like the cottages'.
+export const OUTHOUSE_SIZE = { width: 3.6, depth: 3.4, doorWidth: 2 }
+export const outhouses: Point[] = [
+  { x: -39.6, z: -47.2 },
+  { x: -34.4, z: -47.2 },
+]
+// Two overlapping circles hug each outhouse's walls and litter tray.
+export const outhouseObstacles: Obstacle[] = outhouses.flatMap((outhouse) =>
+  [-0.9, 0.9].map((offset) => ({
+    x: outhouse.x + offset,
+    z: outhouse.z,
+    radius: 2.1,
+  })),
+)
+// The janitors' supply cart, where shifts change hands.
+export const JANITOR_CART: Obstacle = { x: -20.4, z: -48.9, radius: 0.85 }
 export const cafeObstacles: Obstacle[] = [
   // Dining tables and their stools
   ...CAFE_TABLES.flatMap((table) => [
@@ -135,6 +152,8 @@ export const obstacles = [
   ...trees,
   ...rocks,
   ...houseObstacles,
+  ...outhouseObstacles,
+  JANITOR_CART,
   ...cafeObstacles,
   ...lampPosts.map((lamp) => ({ ...lamp, radius: LAMP_POST_RADIUS })),
 ]

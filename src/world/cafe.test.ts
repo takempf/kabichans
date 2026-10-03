@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CAFE_WORKER_IDS,
+  JANITOR_IDS,
   Simulation,
   bodyRadius,
   isBehindCounter,
@@ -159,7 +160,10 @@ describe('meadow cafe', { timeout: 120000 }, () => {
       expect(isWalkable(cat.x, cat.z, bodyRadius(cat))).toBe(true)
       expect(cat.nextVomitAt).toBe(Infinity)
     }
-    expect(simulation.snapshot().counts.working).toBe(3)
+    // The janitors are working their shift too.
+    expect(simulation.snapshot().counts.working).toBe(
+      CAFE_WORKER_IDS.length + JANITOR_IDS.length,
+    )
   })
 
   it('lays out a clear line and three tables with three stools each', () => {

@@ -72,6 +72,10 @@ export function findRoute(
   radius: number,
   blockers: Obstacle[] = [],
 ): Point[] {
+  // Plain copies keep the hot loops below working on a single shape of point,
+  // whether a resident or a waypoint was passed in.
+  from = { x: from.x, z: from.z }
+  to = { x: to.x, z: to.z }
   if (!isWalkable(to.x, to.z, radius)) return []
   if (clearSegment(from, to, radius, blockers)) return [{ ...to }]
   let ground = land.get(radius)

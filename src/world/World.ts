@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { ButterflyRenderer } from './butterflyRenderer'
 import { CatRenderer } from './cats'
 import { CottageRenderer } from './cottageRenderer'
+import { OuthouseRenderer } from './outhouseRenderer'
 import { CafeRenderer } from './cafe'
 import { PsxDithering } from './dithering'
 import { TREAT_COLOR, bendMaterial, treatGeometry } from './materials'
@@ -78,6 +79,7 @@ export class CatWorld {
   private cafe: CafeRenderer
   private butterflies: ButterflyRenderer
   private cottages: CottageRenderer
+  private outhouses: OuthouseRenderer
   private nightLights: NightLights
   private sky = new SkyRenderer()
   private selection: THREE.Mesh
@@ -224,6 +226,8 @@ export class CatWorld {
     this.scene.add(this.butterflies.group)
     this.cottages = new CottageRenderer(this.bend, this.simulation.cottages)
     this.scene.add(this.cottages.group)
+    this.outhouses = new OuthouseRenderer(this.bend, this.simulation.outhouses)
+    this.scene.add(this.outhouses.group)
     this.nightLights = new NightLights(this.bend)
     this.scene.add(this.nightLights.group)
     this.selection = new THREE.Mesh(
@@ -337,6 +341,7 @@ export class CatWorld {
     const night = time === 'night'
     this.nightLights.setNight(night)
     this.cottages.setNight(night)
+    this.outhouses.setNight(night)
     this.butterflies.setNight(night)
   }
 
@@ -1045,6 +1050,7 @@ export class CatWorld {
       this.simulation.elapsed,
       this.bend,
     )
+    this.outhouses.update(this.simulation.outhouses, this.simulation.elapsed)
     this.nightLights.update(
       this.simulation.elapsed,
       this.bend,
@@ -1108,6 +1114,8 @@ export class CatWorld {
       cafeWorker: cat.cafeWorker ? { ...cat.cafeWorker } : null,
       cafeCustomer: cat.cafeCustomer ? { ...cat.cafeCustomer } : null,
       cottage: cat.cottage ? { ...cat.cottage } : null,
+      outhouse: cat.outhouse ? { ...cat.outhouse } : null,
+      janitor: cat.janitor ? { ...cat.janitor } : null,
       snack: cat.snack ? { ...cat.snack } : null,
       objective: cat.objective ? { ...cat.objective } : null,
     }

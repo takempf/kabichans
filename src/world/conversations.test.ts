@@ -163,8 +163,11 @@ describe('occasional conversations', { timeout: 60000 }, () => {
 
   it('does not recruit sleeping cats or create a one-cat discussion', () => {
     const simulation = new Simulation()
-    // Cafe staff keep working their shift; everyone else dozes off.
-    const residents = simulation.cats.filter((cat) => !cat.cafeWorker)
+    // Cafe staff and janitors keep working their shifts; everyone else
+    // dozes off.
+    const residents = simulation.cats.filter(
+      (cat) => !cat.cafeWorker && !cat.janitor,
+    )
     for (const cat of residents) {
       cat.activity = cat.id === 0 ? 'sitting' : 'resting'
       cat.timer = 1000

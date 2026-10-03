@@ -7,6 +7,7 @@ import {
   cafeObstacles,
   rocks,
   picnicBlankets,
+  outhouses,
   isWalkable,
 } from './geography'
 import type { Point, Obstacle, PicnicBlanket } from './geography'
@@ -51,6 +52,18 @@ import {
   cottageLineSpot,
   isInCottageDoorway,
 } from './cottageLayout'
+import {
+  JANITOR_CART,
+  JANITOR_POSTS,
+  JANITOR_SIGN_IN,
+  OUTHOUSE_DIRTY,
+  OUTHOUSE_FILTHY,
+  OUTHOUSE_LINE,
+  OUTHOUSE_VISIT_DIRT,
+  isInOuthouseYard,
+  outhouseDoorway,
+  outhouseExitSpots,
+} from './outhouseLayout'
 import type { Butterfly } from './butterflies'
 export type { Butterfly } from './butterflies'
 export {
@@ -59,6 +72,7 @@ export {
   rocks,
   picnicBlankets,
   houses,
+  outhouses,
   obstacles,
   isWalkable,
 } from './geography'
@@ -70,6 +84,13 @@ export type {
   CafeWorkerCarriedItem,
 } from './cafe'
 export const CAFE_WORKER_IDS = [4, 5, 6] as const
+// The janitors on duty when the day begins, one for each post by the cart.
+export const JANITOR_IDS = [24, 41, 58, 75] as const
+// Kneeling over a puke spot, and leaning into an outhouse, to clean it up.
+export const PUDDLE_SCRUB_SECONDS = 3.5
+export const OUTHOUSE_SCRUB_SECONDS = 7
+// How far from a puddle's middle a janitor kneels to scrub it.
+const PUDDLE_REACH = 0.5
 const cafeObstacleSet = new Set<Obstacle>(cafeObstacles)
 
 export const CAT_COUNT = 100
@@ -84,13 +105,17 @@ export const MAX_PUDDLES = 50
 export const NAP_SECONDS = 90
 export const NAP_SPREAD = 60
 // A little mark over a cat's head. A "!" means they have just noticed
-// something and freeze for a beat before acting on it; "yum" follows a treat.
-export type EmoteKind = 'queasy' | 'treat' | 'butterfly' | 'yum'
+// something and freeze for a beat before acting on it; "yum" follows a treat,
+// a sigh of relief a trip to the outhouse, and a sparkle a good scrub.
+export type EmoteKind =
+  'queasy' | 'treat' | 'butterfly' | 'yum' | 'relieved' | 'sparkle'
 export const EMOTE_SECONDS: Record<EmoteKind, number> = {
   queasy: 1.4,
   treat: 1.4,
   butterfly: 1.4,
   yum: 2.2,
+  relieved: 2.2,
+  sparkle: 2.2,
 }
 export const STARTLE_SECONDS = 0.5
 // A snacking cat kneels, picks their treat up at this point, and takes
@@ -132,6 +157,7 @@ export interface Intention {
     | 'privacy'
     | 'chase'
     | 'cottage'
+    | 'outhouse'
     | 'picnic'
     | 'laser'
   destination: Point
@@ -236,6 +262,62 @@ export interface Cottage extends Point {
   lastThrough: 'in' | 'out'
   nextExitAt: number
 }
+export interface OuthouseVisit {
+  // The outhouse they've been called to; null while still in line.
+  outhouseId: number | null
+  stage: 'arriving' | 'waiting' | 'called' | 'entering' | 'inside' | 'leaving'
+  // Place in line, 0 at the front.
+  place: number
+  // Whether they've reached the line yet; it goes in the order they get there.
+  queued: boolean
+  // The walk through the cat flap, while entering or leaving.
+  path: Point[]
+  // When they set off for the line, and when the current stage began.
+  joinedAt: number
+  since: number
+  // When whoever is inside will be done.
+  until: number
+}
+export interface Outhouse extends Point {
+  id: number
+  // The resident called in, going through the flap, inside, or stepping out.
+  visitorId: number | null
+  // The janitor on their way to scoop it out, or scooping.
+  janitorId: number | null
+  // Whoever is passing through the flap, which swings open for them.
+  doorwayId: number | null
+  // Shut once the janitor is nearly there: nobody new is called in.
+  closed: boolean
+  // 0 is freshly scooped litter.
+  dirt: number
+}
+export type JanitorJob =
+  | { kind: 'puddle'; puddleId: number }
+  | { kind: 'outhouse'; outhouseId: number }
+export interface JanitorState {
+  // Their spot by the cart between jobs.
+  post: number
+  state:
+    | 'reporting'
+    | 'idle'
+    | 'heading'
+    | 'entering'
+    | 'cleaning'
+    | 'exiting'
+    | 'returning'
+  // The janitor a reporting cat has come to relieve.
+  relievingId: number | null
+  shiftStartedAt: number
+  job: JanitorJob | null
+  // Where they kneel to scrub, or wait outside an outhouse.
+  spot: Point | null
+  // In and out through an outhouse's flap.
+  path: Point[]
+  facing: number | null
+  // When they set off for the job, then how long they've been scrubbing.
+  since: number
+  timer: number
+}
 export interface Cat extends Point {
   id: number
   name: string
@@ -282,6 +364,8 @@ export interface Cat extends Point {
   cafeWorker: CafeWorkerState | null
   cafeCustomer: CafeCustomerState | null
   cottage: CottageVisit | null
+  outhouse: OuthouseVisit | null
+  janitor: JanitorState | null
 }
 // One piece from a dropped handful of treats, set aside for one cat.
 export interface TreatPiece extends Point {
@@ -308,9 +392,12 @@ export interface Snack {
   blockedPieceId: number | null
 }
 export interface Puddle extends Point {
+  id: number
   createdAt: number
   heading: number
   scale: number
+  // How much of it a janitor has scrubbed away.
+  scrubbed: number
 }
 
 export interface Conversation {
@@ -366,14 +453,41 @@ export function sharesSpace(cat: Cat, other: Cat) {
   return cat.cafeWorker !== null && other.cafeWorker !== null
 }
 
-// Passing through a cottage door, or out of sight inside.
+// Passing through a cottage door or an outhouse flap, out of sight inside, or
+// a janitor leaning in to scoop.
 export function isIndoors(cat: Cat) {
-  const stage = cat.cottage?.stage
-  return stage === 'entering' || stage === 'inside' || stage === 'leaving'
+  const stage = cat.cottage?.stage ?? cat.outhouse?.stage
+  return (
+    stage === 'entering' ||
+    stage === 'inside' ||
+    stage === 'leaving' ||
+    isInOuthouseDoorway(cat)
+  )
+}
+
+function isInOuthouseDoorway(cat: Cat) {
+  const janitor = cat.janitor
+  return (
+    janitor?.job?.kind === 'outhouse' &&
+    (janitor.state === 'entering' ||
+      janitor.state === 'cleaning' ||
+      janitor.state === 'exiting')
+  )
 }
 
 export function isHidden(cat: Cat) {
-  return cat.cottage?.stage === 'inside'
+  return cat.cottage?.stage === 'inside' || cat.outhouse?.stage === 'inside'
+}
+
+// Reporting janitors haven't put their overalls on yet.
+export function isOnJanitorDuty(cat: Cat) {
+  const state = cat.janitor?.state
+  return state !== undefined && state !== 'reporting'
+}
+
+// Kneeling over a puke spot, or leaning into an outhouse, scrubbing away.
+export function isScrubbing(cat: Cat) {
+  return cat.janitor?.state === 'cleaning'
 }
 
 // Reporting cats haven't put on the apron yet; leaving cats have hung it up.
@@ -478,7 +592,8 @@ for (let z = WORLD.minZ + 6; z < WORLD.maxZ - 4; z += 8) {
       Math.abs(point.x - meadowPathX(point.z)) > 4 &&
       !isOnCafeTerrace(point.x, point.z, 1.0) &&
       !isInCafeQueueLane(point.x, point.z, 1.0) &&
-      !isInCottageDoorway(point.x, point.z, 1.0)
+      !isInCottageDoorway(point.x, point.z, 1.0) &&
+      !isInOuthouseYard(point.x, point.z, 1.0)
     )
       clearings.push(point)
   }
@@ -500,6 +615,18 @@ export class Simulation {
     lastThrough: 'out',
     nextExitAt: 0,
   }))
+  readonly outhouses: Outhouse[] = outhouses.map((outhouse, id) => ({
+    id,
+    x: outhouse.x,
+    z: outhouse.z,
+    visitorId: null,
+    janitorId: null,
+    doorwayId: null,
+    closed: false,
+    dirt: 0,
+  }))
+  // Cat ids in line for the outhouses, front first.
+  readonly outhouseLine: number[] = []
   // Cat ids in line for the counter, front first.
   readonly cafeQueue: number[] = []
   readonly cafeQueueSet = new Set<number>()
@@ -551,6 +678,16 @@ export class Simulation {
   private picnicRandom: () => number
   private nextPicnicTripAt: number
   private picnicReturnAt = new Map<number, number>()
+  private outhouseRandom: () => number
+  private nextOuthouseTripAt: number
+  private outhouseReadyAt = new Map<number, number>()
+  // Janitor choices draw from their own stream too.
+  private janitorRandom: () => number
+  private nextJanitorReliefAt: number
+  private janitorShiftDoneAt = new Map<number, number>()
+  // Puke spots a janitor couldn't get to, left alone for a while.
+  private puddleSkipUntil = new Map<number, number>()
+  private nextPuddleId = 0
   private nextDialogueId = 0
   // Recent topics and lines, so the meadow rarely hears the same thing twice.
   private dialogueMemory = new DialogueMemory()
@@ -568,6 +705,10 @@ export class Simulation {
     this.picnicRandom = randomSeed(seed ^ 0x4d494c4c)
     this.nextCottageTripAt = 15 + this.cottageRandom() * 20
     this.nextPicnicTripAt = 18 + this.picnicRandom() * 15
+    this.outhouseRandom = randomSeed(seed ^ 0x4c4f4f21)
+    this.nextOuthouseTripAt = 10 + this.outhouseRandom() * 10
+    this.janitorRandom = randomSeed(seed ^ 0x4d4f5021)
+    this.nextJanitorReliefAt = 120 + this.janitorRandom() * 40
     this.nextConversationAt = 60 + this.conversationRandom() * 40
     this.cats = []
     for (let id = 0; id < CAT_COUNT; id++) {
@@ -668,6 +809,8 @@ export class Simulation {
         cafeWorker: null,
         cafeCustomer: null,
         cottage: null,
+        outhouse: null,
+        janitor: null,
       })
     }
     const westPlaces = [
@@ -741,13 +884,15 @@ export class Simulation {
           Math.abs(point.x - meadowPathX(point.z)) > 3.1 &&
           !isOnCafeTerrace(point.x, point.z, 0.5) &&
           !isInCafeQueueLane(point.x, point.z, 0.5) &&
-          !isInCottageDoorway(point.x, point.z, 1)
+          !isInCottageDoorway(point.x, point.z, 1) &&
+          !isInOuthouseYard(point.x, point.z, 1)
         )
           cat.favorites.push({ point, kind: place.kind })
       }
       this.fillSchedule(cat)
     }
     this.initCafeWorkers()
+    this.initJanitors()
   }
 
   private point(
@@ -871,7 +1016,7 @@ export class Simulation {
   }
 
   private fillSchedule(cat: Cat) {
-    if (cat.cafeWorker !== null) return
+    if (cat.cafeWorker !== null || cat.janitor !== null) return
     while (cat.schedule.length < 3) {
       const kind = (['explore', 'rest', 'visit'] as const)[cat.routine++ % 3]
       const favorite =
@@ -931,7 +1076,9 @@ export class Simulation {
         ? 'sprinting'
         : intention.kind === 'visit' ||
             (distance > 15 &&
-              (intention.kind === 'explore' || intention.kind === 'cottage'))
+              (intention.kind === 'explore' ||
+                intention.kind === 'cottage' ||
+                intention.kind === 'outhouse'))
           ? 'trotting'
           : 'walking'
     if (intention.kind !== 'chase') this.routeObjective(cat)
@@ -966,6 +1113,28 @@ export class Simulation {
     blockers: Obstacle[],
     goingEast: boolean,
   ) {
+    const route = this.bridgeRoute(
+      cat,
+      objective.destination,
+      radius,
+      blockers,
+      goingEast,
+    )
+    if (!route) return false
+    cat.route = route
+    cat.target = cat.route[0]
+    objective.nextRouteAt = this.elapsed + 2.5
+    return true
+  }
+
+  // Over the creek in the lane for the way the cat is headed.
+  private bridgeRoute(
+    cat: Cat,
+    destination: Point,
+    radius: number,
+    blockers: Obstacle[],
+    goingEast: boolean,
+  ): Point[] | null {
     const laneOffset = 1.5
     const laneZ = goingEast ? BRIDGE.z - laneOffset : BRIDGE.z + laneOffset
     const approach = { x: goingEast ? 13.5 : 26.5, z: laneZ }
@@ -973,8 +1142,8 @@ export class Simulation {
     // Today's neighbors will have moved on by the far bank, so only scenery
     // shapes that leg. Without one, a straight line from the exit would
     // leave the cat parked there, corking the lane.
-    const exitPath = findRoute(exitPoint, objective.destination, radius + 0.08)
-    if (!exitPath.length) return false
+    const exitPath = findRoute(exitPoint, destination, radius + 0.08)
+    if (!exitPath.length) return null
     // Already out on the deck, or lined up in their own lane at the near end,
     // with a clear run to the far end: no doubling back. Anyone else joins
     // the lane properly rather than cutting in against oncoming traffic.
@@ -982,20 +1151,14 @@ export class Simulation {
       (isOnBridgeDeck(cat) ||
         (Math.abs(cat.z - laneZ) < 1 && Math.abs(cat.x - approach.x) < 1.5)) &&
       clearSegment(cat, exitPoint, radius)
-    if (lined) cat.route = [exitPoint, ...exitPath]
-    else {
-      let toApproach = findRoute(cat, approach, radius + 0.08, blockers)
-      if (!toApproach.length)
-        toApproach = findRoute(cat, approach, radius + 0.08)
-      cat.route = [
-        ...(toApproach.length ? toApproach : [approach]),
-        exitPoint,
-        ...exitPath,
-      ]
-    }
-    cat.target = cat.route[0]
-    objective.nextRouteAt = this.elapsed + 2.5
-    return true
+    if (lined) return [exitPoint, ...exitPath]
+    let toApproach = findRoute(cat, approach, radius + 0.08, blockers)
+    if (!toApproach.length) toApproach = findRoute(cat, approach, radius + 0.08)
+    return [
+      ...(toApproach.length ? toApproach : [approach]),
+      exitPoint,
+      ...exitPath,
+    ]
   }
 
   private routeObjective(cat: Cat, avoidResidents = false) {
@@ -1053,7 +1216,8 @@ export class Simulation {
         // Somewhere quiet on this side of the creek, not a dash over the bridge.
         isWestBank(point) !== isWestBank(cat) ||
         Math.abs(point.x - meadowPathX(point.z)) < 3.2 ||
-        isInCottageDoorway(point.x, point.z, 1)
+        isInCottageDoorway(point.x, point.z, 1) ||
+        isInOuthouseYard(point.x, point.z, 1)
       )
         continue
       const crowding = this.cats.reduce(
@@ -1118,6 +1282,7 @@ export class Simulation {
       if (objective.kind === 'privacy') cat.nextVomitAt = this.elapsed + 15
       cat.objective = null
       cat.cottage = null
+      this.leaveOuthouse(cat)
       this.startActivity(cat, 'sitting', 3 + this.mindRandom() * 4)
       return
     }
@@ -1131,7 +1296,9 @@ export class Simulation {
       (!friend ||
         friend.cafeCustomer !== null ||
         friend.cafeWorker !== null ||
-        friend.cottage !== null)
+        friend.janitor !== null ||
+        friend.cottage !== null ||
+        friend.outhouse !== null)
     ) {
       objective.deadline = this.elapsed
       return
@@ -1282,6 +1449,18 @@ export class Simulation {
       cat.target = { x: cat.x, z: cat.z }
       return
     }
+    if (objective.kind === 'outhouse' && cat.outhouse) {
+      objective.phase = 'doing'
+      cat.target = { x: cat.x, z: cat.z }
+      // On the step of the outhouse they were called to, or in their place in line.
+      if (cat.outhouse.stage === 'called') this.enterOuthouse(cat)
+      else {
+        cat.outhouse.stage = 'waiting'
+        cat.outhouse.queued = true
+        cat.outhouse.since = this.elapsed
+      }
+      return
+    }
     if (objective.kind === 'privacy') {
       const isolated = this.cats.every(
         (other) =>
@@ -1335,7 +1514,8 @@ export class Simulation {
         distance > 13 ||
         Math.abs(point.x - meadowPathX(point.z)) < 3.1 ||
         isOnCafeTerrace(point.x, point.z, radius) ||
-        isInCafeQueueLane(point.x, point.z, radius)
+        isInCafeQueueLane(point.x, point.z, radius) ||
+        isInOuthouseYard(point.x, point.z, radius)
       )
         return
       if (
@@ -1518,6 +1698,8 @@ export class Simulation {
       cat.cafeWorker === null &&
       cat.cafeCustomer === null &&
       cat.cottage === null &&
+      cat.outhouse === null &&
+      cat.janitor === null &&
       cat.objective?.kind !== 'privacy' &&
       // Anyone already kneeling over a treat finishes it first.
       cat.snack?.stage !== 'eating'
@@ -1621,7 +1803,8 @@ export class Simulation {
           isWalkable(candidateStand.x, candidateStand.z, radius) &&
           !isOnCafeTerrace(candidateStand.x, candidateStand.z, radius) &&
           !isInCafeQueueLane(candidateStand.x, candidateStand.z, radius) &&
-          !isInCottageDoorway(candidateStand.x, candidateStand.z, radius)
+          !isInCottageDoorway(candidateStand.x, candidateStand.z, radius) &&
+          !isInOuthouseYard(candidateStand.x, candidateStand.z, radius)
         ) {
           stand = candidateStand
           break
@@ -1657,7 +1840,8 @@ export class Simulation {
           isWalkable(piece.x, piece.z) &&
           !isOnCafeTerrace(stand.x, stand.z, radius) &&
           !isInCafeQueueLane(stand.x, stand.z, radius) &&
-          !isInCottageDoorway(stand.x, stand.z, radius)
+          !isInCottageDoorway(stand.x, stand.z, radius) &&
+          !isInOuthouseYard(stand.x, stand.z, radius)
         )
           places.push({ stand, piece, ring, taken: false })
       }
@@ -1792,8 +1976,10 @@ export class Simulation {
     this.noticeTreats()
     this.updateConversations()
     this.updateCafe(dt)
+    this.updateJanitors(dt)
     this.updateButterflies(dt)
     this.updateCottages()
+    this.updateOuthouses()
     this.updatePicnicTrips()
     this.updateLaser()
     for (const cat of this.cats) {
@@ -1802,7 +1988,9 @@ export class Simulation {
       if (cat.emote && this.elapsed - cat.emoteAt >= EMOTE_SECONDS[cat.emote])
         cat.emote = null
       if (isIndoors(cat)) {
-        this.walkDoorway(cat, dt)
+        if (cat.cottage) this.walkDoorway(cat, dt)
+        else if (cat.outhouse) this.walkOuthouseDoorway(cat, dt)
+        else this.scoopOuthouse(cat, dt)
         continue
       }
       if (
@@ -1810,13 +1998,15 @@ export class Simulation {
         previousActivityTime < VOMIT_EMIT_TIME &&
         cat.activityTime >= VOMIT_EMIT_TIME
       ) {
-        if (this.puddles.length === MAX_PUDDLES) this.puddles.shift()
+        if (this.puddles.length === MAX_PUDDLES) this.evictPuddle()
         this.puddles.push({
+          id: this.nextPuddleId++,
           x: cat.x + Math.sin(cat.heading) * 0.92 * cat.scale,
           z: cat.z + Math.cos(cat.heading) * 0.92 * cat.scale,
           heading: cat.heading,
           scale: cat.scale,
           createdAt: this.elapsed,
+          scrubbed: 0,
         })
       }
       if (
@@ -1825,6 +2015,7 @@ export class Simulation {
         cat.objective.kind !== 'privacy' &&
         cat.objective.kind !== 'chase' &&
         cat.objective.kind !== 'cottage' &&
+        cat.objective.kind !== 'outhouse' &&
         cat.conversationId === null &&
         this.elapsed >= cat.nextVomitAt &&
         (cat.activity === 'wandering' ||
@@ -1857,6 +2048,8 @@ export class Simulation {
         cat.cafeCustomer === null &&
         cat.conversationId === null &&
         cat.cottage === null &&
+        cat.outhouse === null &&
+        cat.janitor === null &&
         !(cat.objective?.phase === 'traveling' && cat.activity !== 'snacking')
       ) {
         cat.timer -= dt
@@ -1913,7 +2106,7 @@ export class Simulation {
         cat.pose[key] +=
           Math.sign(difference) * Math.min(Math.abs(difference), dt * 1.8)
       }
-      const kneeling = cat.snack?.stage === 'eating' ? 1 : 0
+      const kneeling = cat.snack?.stage === 'eating' || isScrubbing(cat) ? 1 : 0
       cat.kneel +=
         Math.sign(kneeling - cat.kneel) *
         Math.min(Math.abs(kneeling - cat.kneel), dt * 2.2)
@@ -1923,7 +2116,8 @@ export class Simulation {
       const passing =
         (cat.objective?.phase === 'traveling' ||
           cat.cafeCustomer !== null ||
-          cat.cafeWorker !== null) &&
+          cat.cafeWorker !== null ||
+          cat.janitor !== null) &&
         cat.route.length > 1
       const moving =
         (cat.activity === 'wandering' ||
@@ -1955,10 +2149,11 @@ export class Simulation {
         }
         // Out on an errand, not closing in on a treat or a spot in a group.
         const errand =
-          cat.objective?.phase === 'traveling' &&
-          cat.snack === null &&
-          cat.cafeCustomer === null &&
-          cat.conversationId === null
+          (cat.objective?.phase === 'traveling' &&
+            cat.snack === null &&
+            cat.cafeCustomer === null &&
+            cat.conversationId === null) ||
+          cat.janitor?.state === 'heading'
         const gx = dx / distance,
           gz = dz / distance
         const catInQueue = this.cafeQueueSet.has(cat.id)
@@ -2095,13 +2290,19 @@ export class Simulation {
         const door = cottageDoorway(this.cottages[cat.cottage.cottageId]).door
         turnTarget = Math.atan2(door.x - cat.x, door.z - cat.z)
       }
+      // The outhouse line faces the doors, along the back fence.
+      if (cat.outhouse?.stage === 'waiting' && traveled / dt < 0.12)
+        turnTarget = -Math.PI / 2
       if (conversation && traveled / dt < 0.12)
         turnTarget = Math.atan2(
           conversation.center.x - cat.x,
           conversation.center.z - cat.z,
         )
       const cafeFacing =
-        cat.cafeCustomer?.facing ?? cat.cafeWorker?.facing ?? null
+        cat.cafeCustomer?.facing ??
+        cat.cafeWorker?.facing ??
+        cat.janitor?.facing ??
+        null
       if (cafeFacing !== null && traveled / dt < 0.12) turnTarget = cafeFacing
       this.turnToward(cat, turnTarget, dt)
       // Feet and bobbing follow accepted movement, including slowing and yielding.
@@ -2272,7 +2473,8 @@ export class Simulation {
         isOnBridgeOrApproach(center.x, center.z, radius + BRIDGE_KEEP_CLEAR) ||
         !isWalkable(center.x, center.z, radius + 1.3) ||
         isOnCafeTerrace(center.x, center.z, radius + 1) ||
-        isInCottageDoorway(center.x, center.z, radius + 1)
+        isInCottageDoorway(center.x, center.z, radius + 1) ||
+        isInOuthouseYard(center.x, center.z, radius + 1)
       )
         continue
       // A conversation needs a quiet pocket, not a ring around an existing crowd.
@@ -2427,8 +2629,9 @@ export class Simulation {
     // Some cats are quicker on the uptake than others.
     const pause = STARTLE_SECONDS * (0.7 + 0.6 * ((cat.phase * 7.13) % 1))
     return (
-      cat.emote !== null &&
-      cat.emote !== 'yum' &&
+      (cat.emote === 'queasy' ||
+        cat.emote === 'treat' ||
+        cat.emote === 'butterfly') &&
       this.elapsed - cat.emoteAt < pause
     )
   }
@@ -2468,7 +2671,12 @@ export class Simulation {
   }
 
   private chooseActivity(cat: Cat) {
-    if (cat.cafeWorker !== null || cat.cafeCustomer !== null) return
+    if (
+      cat.cafeWorker !== null ||
+      cat.cafeCustomer !== null ||
+      cat.janitor !== null
+    )
+      return
     if (cat.activity === 'vomiting') {
       cat.nextVomitAt = this.elapsed + 150 + this.mindRandom() * 150
       cat.objective = null
@@ -2624,9 +2832,15 @@ export class Simulation {
     return threat
   }
 
-  // Busy with a butterfly or a cottage trip, and not to be recruited elsewhere.
+  // Busy with a butterfly, a cottage or outhouse trip, or a janitor's shift,
+  // and not to be recruited elsewhere.
   private isOccupied(cat: Cat) {
-    return cat.objective?.kind === 'chase' || cat.cottage !== null
+    return (
+      cat.objective?.kind === 'chase' ||
+      cat.cottage !== null ||
+      cat.outhouse !== null ||
+      cat.janitor !== null
+    )
   }
 
   // Out exploring, or at loose ends; a cat settled at a favorite spot stays.
@@ -2636,6 +2850,8 @@ export class Simulation {
       cat.cafeCustomer === null &&
       cat.conversationId === null &&
       cat.cottage === null &&
+      cat.outhouse === null &&
+      cat.janitor === null &&
       cat.butterflyId === null &&
       (cat.activity === 'wandering' || cat.activity === 'sitting') &&
       (!cat.objective ||
@@ -2654,6 +2870,8 @@ export class Simulation {
       cat.cafeCustomer === null &&
       cat.conversationId === null &&
       cat.cottage === null &&
+      cat.outhouse === null &&
+      cat.janitor === null &&
       cat.butterflyId === null &&
       cat.objective?.kind !== 'privacy' &&
       cat.objective?.kind !== 'chase'
@@ -2885,6 +3103,8 @@ export class Simulation {
         cat.cafeWorker === null &&
         cat.cafeCustomer === null &&
         cat.cottage === null &&
+        cat.outhouse === null &&
+        cat.janitor === null &&
         cat.conversationId === null &&
         cat.snack === null &&
         (cat.activity === 'wandering' || cat.activity === 'sitting') &&
@@ -3066,13 +3286,12 @@ export class Simulation {
     return true
   }
 
-  // Through the doorway on a set path: the walls are no obstacle here.
-  private walkDoorway(cat: Cat, dt: number) {
-    const visit = cat.cottage!
-    const cottage = this.cottages[visit.cottageId]
+  // Through a doorway on a set path: the walls are no obstacle here. Returns
+  // false once there is nowhere left to go.
+  private followPath(cat: Cat, path: Point[], dt: number) {
     let traveled = 0
     const speed = TRAVEL_SPEEDS.walking * cat.pace
-    const next = visit.path[0]
+    const next = path[0]
     if (next) {
       const dx = next.x - cat.x
       const dz = next.z - cat.z
@@ -3085,8 +3304,39 @@ export class Simulation {
         cat.velocity.z = (dz / distance) * speed
         this.turnToward(cat, Math.atan2(dx, dz), dt)
       }
-      if (distance <= speed * dt) visit.path.shift()
-    } else if (visit.stage === 'entering') {
+      if (distance <= speed * dt) path.shift()
+    } else {
+      cat.velocity.x = 0
+      cat.velocity.z = 0
+    }
+    const walking = Math.min(1, traveled / (dt * speed))
+    cat.walking += (walking - cat.walking) * (1 - Math.exp(-dt * 8))
+    cat.travelSpeed +=
+      (traveled / dt - cat.travelSpeed) * (1 - Math.exp(-dt * 7))
+    cat.gait += traveled * (5 - Math.min(1.4, cat.travelSpeed * 0.32))
+    return next !== undefined
+  }
+
+  // Someone wandered into the way of a cat stepping out: head for the
+  // nearest open spot instead.
+  private stepAside(cat: Cat, path: Point[]) {
+    path.push(
+      this.point(
+        cat.x - 4,
+        cat.x + 4,
+        cat.z,
+        cat.z + 5,
+        catRadius(cat) + 0.15,
+        cat.id,
+      ),
+    )
+  }
+
+  private walkDoorway(cat: Cat, dt: number) {
+    const visit = cat.cottage!
+    const cottage = this.cottages[visit.cottageId]
+    if (this.followPath(cat, visit.path, dt)) return
+    if (visit.stage === 'entering') {
       cottage.doorwayId = null
       cottage.occupants.push(cat.id)
       cat.cottage = { ...visit, stage: 'inside', path: [], since: this.elapsed }
@@ -3101,29 +3351,235 @@ export class Simulation {
           this.elapsed + 90 + this.cottageRandom() * 120,
         )
         this.startActivity(cat, 'wandering', 0.5 + this.cottageRandom())
-      } else {
-        // Someone wandered into the way: step over to the nearest open spot.
-        visit.path.push(
-          this.point(
-            cat.x - 4,
-            cat.x + 4,
-            cat.z,
-            cat.z + 5,
-            catRadius(cat) + 0.15,
-            cat.id,
-          ),
-        )
+      } else this.stepAside(cat, visit.path)
+    }
+  }
+
+  private updateOuthouses() {
+    // Anyone who gave up, or was called in, has left the line.
+    for (const id of [...this.outhouseLine]) {
+      const cat = this.catById(id)
+      const stage = cat?.outhouse?.stage
+      if (stage !== 'arriving' && stage !== 'waiting')
+        this.outhouseLine.splice(this.outhouseLine.indexOf(id), 1)
+      // A last resort when both doors stay shut for ages.
+      else if (this.elapsed - cat!.outhouse!.joinedAt > 120) {
+        this.leaveOuthouse(cat!)
+        cat!.objective = null
+        this.startActivity(cat!, 'sitting', 3 + this.outhouseRandom() * 3)
       }
     }
-    if (!next) {
-      cat.velocity.x = 0
-      cat.velocity.z = 0
+    // Whoever is still on the way falls in behind everyone already there, so
+    // nobody has to squeeze past the line to their place.
+    this.outhouseLine.sort(
+      (a, b) =>
+        Number(this.catById(b)!.outhouse!.queued) -
+        Number(this.catById(a)!.outhouse!.queued),
+    )
+    this.callOuthouseVisitors()
+    // Everyone behind shuffles up a place, and newcomers make for the back of
+    // the line, wherever it has got to.
+    const back = this.outhouseBack()
+    for (const [index, id] of this.outhouseLine.entries()) {
+      const cat = this.catById(id)!
+      const queued = cat.outhouse!.queued
+      const place = queued ? index : back
+      if (cat.outhouse!.place === place) continue
+      cat.outhouse!.place = place
+      cat.outhouse!.stage = 'arriving'
+      this.walkToOuthouse(
+        cat,
+        OUTHOUSE_LINE[place],
+        queued ? 'walking' : cat.travelMode,
+      )
     }
-    const walking = Math.min(1, traveled / (dt * speed))
-    cat.walking += (walking - cat.walking) * (1 - Math.exp(-dt * 8))
-    cat.travelSpeed +=
-      (traveled / dt - cat.travelSpeed) * (1 - Math.exp(-dt * 7))
-    cat.gait += traveled * (5 - Math.min(1.4, cat.travelSpeed * 0.32))
+    if (this.elapsed >= this.nextOuthouseTripAt) {
+      this.nextOuthouseTripAt = this.elapsed + 10 + this.outhouseRandom() * 10
+      if (!this.treat) this.planOuthouseTrip()
+    }
+  }
+
+  // The first place in line nobody is standing in yet.
+  private outhouseBack() {
+    return this.outhouseLine.filter((id) => this.catById(id)!.outhouse!.queued)
+      .length
+  }
+
+  // Someone nearby realizes they need to go, and joins the back of the line.
+  private planOuthouseTrip() {
+    if (this.outhouseLine.length >= OUTHOUSE_LINE.length) return
+    const place = this.outhouseBack()
+    const front = OUTHOUSE_LINE[0]
+    const distance = (cat: Cat) => Math.hypot(cat.x - front.x, cat.z - front.z)
+    const candidates = this.cats
+      .filter(
+        (cat) =>
+          isWestBank(cat) &&
+          this.isAtLooseEnds(cat) &&
+          this.elapsed >= (this.outhouseReadyAt.get(cat.id) ?? 0) &&
+          distance(cat) < 40,
+      )
+      .sort((a, b) => distance(a) - distance(b))
+    if (!candidates.length) return
+    const cat =
+      candidates[
+        Math.floor(this.outhouseRandom() ** 2 * Math.min(candidates.length, 16))
+      ]
+    // Whatever they were up to can wait until they're done.
+    if (cat.objective)
+      cat.schedule.unshift({
+        ...cat.objective,
+        dueAt: this.elapsed,
+        resume: true,
+      })
+    this.beginObjective(cat, {
+      kind: 'outhouse',
+      destination: OUTHOUSE_LINE[place],
+      hangout: null,
+      friendId: null,
+      duration: 0,
+    })
+    cat.outhouse = {
+      outhouseId: null,
+      stage: 'arriving',
+      place,
+      queued: false,
+      path: [],
+      joinedAt: this.elapsed,
+      since: this.elapsed,
+      until: 0,
+    }
+    this.outhouseLine.push(cat.id)
+  }
+
+  private walkToOuthouse(cat: Cat, spot: Point, travelMode: TravelMode) {
+    const objective = cat.objective
+    if (objective?.kind !== 'outhouse') return
+    objective.destination = { x: spot.x, z: spot.z }
+    objective.phase = 'traveling'
+    objective.deadline = this.elapsed + 60
+    objective.nextRouteAt = this.elapsed
+    cat.travelMode = travelMode
+    this.routeObjective(cat)
+  }
+
+  // Whoever is at the front of the line takes the nearest door to come free,
+  // so long as the litter is fit to use.
+  private callOuthouseVisitors() {
+    for (;;) {
+      const cat = this.catById(this.outhouseLine[0])
+      if (!cat?.outhouse?.queued) return
+      const distance = (outhouse: Outhouse) =>
+        Math.hypot(outhouse.x - cat.x, outhouse.z - cat.z)
+      const outhouse = this.outhouses
+        .filter(
+          (candidate) =>
+            candidate.visitorId === null &&
+            !candidate.closed &&
+            candidate.dirt < OUTHOUSE_FILTHY,
+        )
+        .sort((a, b) => distance(a) - distance(b))[0]
+      if (!outhouse) return
+      this.outhouseLine.shift()
+      outhouse.visitorId = cat.id
+      cat.outhouse = {
+        ...cat.outhouse,
+        outhouseId: outhouse.id,
+        stage: 'called',
+        place: -1,
+        since: this.elapsed,
+      }
+      this.walkToOuthouse(
+        cat,
+        outhouseDoorway(outhouse).threshold,
+        cat.travelMode,
+      )
+    }
+  }
+
+  private enterOuthouse(cat: Cat) {
+    const visit = cat.outhouse!
+    const outhouse = this.outhouses[visit.outhouseId!]
+    const doorway = outhouseDoorway(outhouse)
+    outhouse.doorwayId = cat.id
+    cat.objective = null
+    this.startActivity(cat, 'indoors', 0)
+    cat.discussion = 0
+    cat.speaking = 0
+    cat.outhouse = {
+      ...visit,
+      stage: 'entering',
+      path: [doorway.threshold, doorway.door, doorway.inside],
+      since: this.elapsed,
+    }
+  }
+
+  // Through the flap, a little while inside, then back out again.
+  private walkOuthouseDoorway(cat: Cat, dt: number) {
+    const visit = cat.outhouse!
+    const outhouse = this.outhouses[visit.outhouseId!]
+    if (this.followPath(cat, visit.path, dt)) return
+    if (visit.stage === 'entering') {
+      outhouse.doorwayId = null
+      cat.outhouse = {
+        ...visit,
+        stage: 'inside',
+        path: [],
+        since: this.elapsed,
+        until: this.elapsed + 7 + this.outhouseRandom() * 6,
+      }
+      cat.x = outhouse.x
+      cat.z = outhouse.z
+    } else if (visit.stage === 'inside') {
+      if (this.elapsed >= visit.until && outhouse.doorwayId === null)
+        this.beginOuthouseExit(cat, outhouse)
+    } else if (this.canOccupy(cat.x, cat.z, catRadius(cat), cat.id)) {
+      outhouse.doorwayId = null
+      outhouse.visitorId = null
+      cat.outhouse = null
+      this.outhouseReadyAt.set(
+        cat.id,
+        this.elapsed + 240 + this.outhouseRandom() * 240,
+      )
+      this.startActivity(cat, 'wandering', 0.5 + this.outhouseRandom())
+      this.emote(cat, 'relieved')
+    } else this.stepAside(cat, visit.path)
+  }
+
+  private beginOuthouseExit(cat: Cat, outhouse: Outhouse) {
+    const exit = outhouseExitSpots(outhouse).find((spot) =>
+      this.canOccupy(spot.x, spot.z, CAT_RADIUS * cat.scale + 0.15, cat.id),
+    )
+    if (!exit) return
+    const doorway = outhouseDoorway(outhouse)
+    outhouse.doorwayId = cat.id
+    outhouse.dirt = Math.min(
+      OUTHOUSE_FILTHY,
+      outhouse.dirt + OUTHOUSE_VISIT_DIRT,
+    )
+    cat.x = doorway.inside.x
+    cat.z = doorway.inside.z
+    cat.heading = 0
+    cat.angularVelocity = 0
+    cat.outhouse = {
+      ...cat.outhouse!,
+      stage: 'leaving',
+      path: [doorway.door, doorway.threshold, exit],
+      since: this.elapsed,
+    }
+  }
+
+  // Out of line, and out of any outhouse they were called to.
+  private leaveOuthouse(cat: Cat) {
+    const visit = cat.outhouse
+    if (!visit) return
+    const index = this.outhouseLine.indexOf(cat.id)
+    if (index >= 0) this.outhouseLine.splice(index, 1)
+    const outhouse =
+      visit.outhouseId === null ? null : this.outhouses[visit.outhouseId]
+    if (outhouse?.visitorId === cat.id) outhouse.visitorId = null
+    cat.outhouse = null
+    this.outhouseReadyAt.set(cat.id, this.elapsed + 60)
   }
 
   private catById(id: number | null | undefined) {
@@ -3802,16 +4258,18 @@ export class Simulation {
   ) {
     const destination = cat.route.at(-1)
     const there = Math.hypot(cat.x - point.x, cat.z - point.z) < reach
+    const route = (avoidResidents = false) =>
+      cat.janitor
+        ? this.routeJanitor(cat, point, travelMode, avoidResidents)
+        : this.routeWorker(cat, point, travelMode, avoidResidents)
     if (
       !there &&
       (!destination ||
         Math.hypot(destination.x - point.x, destination.z - point.z) > 0.1)
     )
-      this.routeWorker(cat, point, travelMode)
+      route()
     else if (!there && !isBehindCounter(cat))
-      this.unstick(cat, point, () =>
-        this.routeWorker(cat, point, travelMode, true),
-      )
+      this.unstick(cat, point, () => route(true))
     return there
   }
 
@@ -4103,6 +4561,452 @@ export class Simulation {
       this.startActivity(cat, 'sitting', 0)
   }
 
+  private initJanitors() {
+    // On duty from the start, setting off from wherever they woke up.
+    for (const [post, id] of JANITOR_IDS.entries()) {
+      const cat = this.catById(id)
+      if (!cat) continue
+      this.startActivity(cat, 'working', 0)
+      cat.nextVomitAt = Infinity
+      cat.pose = { sitting: 0, lying: 0, vomiting: 0 }
+      cat.janitor = { ...this.newJanitorShift(post, null), state: 'idle' }
+    }
+  }
+
+  private newJanitorShift(
+    post: number,
+    relievingId: number | null,
+  ): JanitorState {
+    return {
+      post,
+      state: 'reporting',
+      relievingId,
+      shiftStartedAt: this.elapsed,
+      job: null,
+      spot: null,
+      path: [],
+      facing: null,
+      since: this.elapsed,
+      timer: 0,
+    }
+  }
+
+  private updateJanitors(dt: number) {
+    if (this.elapsed >= this.nextJanitorReliefAt) {
+      this.nextJanitorReliefAt = this.elapsed + 120 + this.janitorRandom() * 60
+      this.callJanitorRelief()
+    }
+    this.assignOuthouseScooping()
+    for (const cat of this.cats) {
+      const janitor = cat.janitor
+      if (!janitor) continue
+      cat.activity = 'working'
+      cat.nextVomitAt = Infinity
+      janitor.facing = null
+      // Leaning into an outhouse is walked with the other doorways.
+      if (isIndoors(cat)) continue
+      this.followCafeRoute(cat)
+      switch (janitor.state) {
+        case 'reporting':
+          this.updateJanitorReporting(cat, janitor)
+          break
+        case 'idle':
+          this.updateJanitorIdle(cat, janitor)
+          break
+        case 'heading':
+          this.updateJanitorHeading(cat, janitor)
+          break
+        case 'cleaning':
+          this.updateJanitorScrubbing(cat, janitor, dt)
+          break
+        case 'returning':
+          this.updateJanitorReturning(cat, janitor)
+          break
+      }
+    }
+  }
+
+  // A neighbor heads over to the cart to take the longest-running shift.
+  private callJanitorRelief() {
+    const janitors = this.cats.filter((cat) => cat.janitor !== null)
+    if (
+      janitors.some(
+        (cat) =>
+          cat.janitor!.state === 'reporting' ||
+          cat.janitor!.state === 'returning',
+      )
+    )
+      return
+    const tired = janitors.sort(
+      (a, b) => a.janitor!.shiftStartedAt - b.janitor!.shiftStartedAt,
+    )[0]
+    if (!tired) return
+    const distance = (cat: Cat) =>
+      Math.hypot(cat.x - JANITOR_SIGN_IN.x, cat.z - JANITOR_SIGN_IN.z)
+    const candidates = this.cats
+      .filter(
+        (cat) =>
+          cat.cafeWorker === null &&
+          cat.cafeCustomer === null &&
+          cat.conversationId === null &&
+          (cat.activity === 'wandering' || cat.activity === 'sitting') &&
+          cat.objective?.kind !== 'privacy' &&
+          cat.objective?.kind !== 'visit' &&
+          !this.isOccupied(cat) &&
+          this.elapsed >= (this.janitorShiftDoneAt.get(cat.id) ?? 0) &&
+          this.elapsed >= (this.cafeShiftDoneAt.get(cat.id) ?? 0) &&
+          isWestBank(cat) &&
+          distance(cat) < 45,
+      )
+      .sort((a, b) => distance(a) - distance(b))
+    const cat =
+      candidates[
+        Math.floor(this.janitorRandom() * Math.min(10, candidates.length))
+      ]
+    if (!cat) return
+    if (cat.objective?.phase === 'traveling')
+      cat.schedule.unshift({
+        ...cat.objective,
+        dueAt: this.elapsed,
+        resume: true,
+      })
+    cat.objective = null
+    this.startActivity(cat, 'working', 0)
+    cat.nextVomitAt = Infinity
+    cat.janitor = this.newJanitorShift(tired.janitor!.post, tired.id)
+    this.routeJanitor(cat, JANITOR_SIGN_IN, 'trotting')
+  }
+
+  // Signs in at the cart, then waits there for the outgoing janitor.
+  private updateJanitorReporting(cat: Cat, janitor: JanitorState) {
+    if (!this.workerAt(cat, JANITOR_SIGN_IN, 1.2, 'trotting')) return
+    janitor.facing = Math.atan2(JANITOR_CART.x - cat.x, JANITOR_CART.z - cat.z)
+    const tired = this.catById(janitor.relievingId)
+    const outgoing = tired?.janitor
+    if (outgoing) {
+      const post = JANITOR_POSTS[outgoing.post]
+      if (
+        outgoing.state !== 'returning' ||
+        Math.hypot(tired!.x - post.x, tired!.z - post.z) > 1.2
+      )
+        return
+    }
+    janitor.state = 'idle'
+    janitor.relievingId = null
+    janitor.shiftStartedAt = this.elapsed
+    if (!tired || !outgoing) return
+    // Overalls off, and back to meadow life.
+    tired.janitor = null
+    tired.nextVomitAt = this.elapsed + 60 + this.janitorRandom() * 120
+    this.janitorShiftDoneAt.set(tired.id, this.elapsed + 400)
+    this.startActivity(tired, 'wandering', 1 + this.janitorRandom() * 2)
+  }
+
+  private updateJanitorReturning(cat: Cat, janitor: JanitorState) {
+    if (this.workerAt(cat, JANITOR_POSTS[janitor.post], 0.8))
+      janitor.facing = Math.atan2(
+        JANITOR_SIGN_IN.x - cat.x,
+        JANITOR_SIGN_IN.z - cat.z,
+      )
+  }
+
+  private updateJanitorIdle(cat: Cat, janitor: JanitorState) {
+    // Someone has come to take over: back to the cart to hand over.
+    if (
+      this.cats.some(
+        (other) =>
+          other.janitor?.state === 'reporting' &&
+          other.janitor.relievingId === cat.id,
+      )
+    ) {
+      janitor.state = 'returning'
+      return
+    }
+    if (this.findJanitorJob(cat, janitor)) return
+    // Nothing to clean: wait by the cart, looking out over the meadow.
+    if (this.workerAt(cat, JANITOR_POSTS[janitor.post], 0.8)) janitor.facing = 0
+  }
+
+  // A dirty litter box comes before any puke spot: the nearest janitor on
+  // this side of the creek who isn't already down scrubbing heads over.
+  private assignOuthouseScooping() {
+    for (const outhouse of this.outhouses) {
+      if (outhouse.janitorId !== null || outhouse.dirt < OUTHOUSE_DIRTY)
+        continue
+      const distance = (cat: Cat) =>
+        Math.hypot(cat.x - outhouse.x, cat.z - outhouse.z)
+      const cat = this.cats
+        .filter(
+          (other) =>
+            isWestBank(other) &&
+            (other.janitor?.state === 'idle' ||
+              (other.janitor?.state === 'heading' &&
+                other.janitor.job?.kind === 'puddle')),
+        )
+        .sort((a, b) => distance(a) - distance(b))[0]
+      if (!cat) continue
+      outhouse.janitorId = cat.id
+      this.startJanitorJob(
+        cat,
+        cat.janitor!,
+        { kind: 'outhouse', outhouseId: outhouse.id },
+        outhouseDoorway(outhouse).side,
+      )
+    }
+  }
+
+  // The nearest puke spot nobody else is already on, preferably on this side
+  // of the creek.
+  private findJanitorJob(cat: Cat, janitor: JanitorState) {
+    const distance = (point: Point) =>
+      Math.hypot(point.x - cat.x, point.z - cat.z)
+    const claimed = new Set<number>()
+    for (const other of this.cats)
+      if (other.janitor?.job?.kind === 'puddle')
+        claimed.add(other.janitor.job.puddleId)
+    const cost = (puddle: Puddle) =>
+      distance(puddle) + (isWestBank(puddle) !== isWestBank(cat) ? 25 : 0)
+    const puddles = this.puddles
+      .filter(
+        (puddle) =>
+          !claimed.has(puddle.id) &&
+          this.elapsed >= (this.puddleSkipUntil.get(puddle.id) ?? 0),
+      )
+      .sort((a, b) => cost(a) - cost(b))
+    for (const puddle of puddles.slice(0, 4)) {
+      const spot = this.scrubSpot(cat, puddle)
+      if (!spot) continue
+      this.startJanitorJob(
+        cat,
+        janitor,
+        { kind: 'puddle', puddleId: puddle.id },
+        spot,
+      )
+      return true
+    }
+    return false
+  }
+
+  private startJanitorJob(
+    cat: Cat,
+    janitor: JanitorState,
+    job: JanitorJob,
+    spot: Point,
+  ) {
+    janitor.job = job
+    janitor.spot = spot
+    janitor.state = 'heading'
+    janitor.since = this.elapsed
+    janitor.timer = 0
+    this.routeJanitor(
+      cat,
+      spot,
+      Math.hypot(spot.x - cat.x, spot.z - cat.z) > 15 ? 'trotting' : 'walking',
+    )
+  }
+
+  // Kneeling room beside a puke spot, on the side the janitor comes from.
+  private scrubSpot(cat: Cat, puddle: Puddle): Point | null {
+    const reach = PUDDLE_REACH * cat.scale
+    const toward = Math.atan2(cat.x - puddle.x, cat.z - puddle.z)
+    for (const offset of [0, 0.8, -0.8, 1.6, -1.6, 2.4, -2.4, Math.PI]) {
+      const spot = {
+        x: puddle.x + Math.sin(toward + offset) * reach,
+        z: puddle.z + Math.cos(toward + offset) * reach,
+      }
+      if (this.canOccupy(spot.x, spot.z, CAT_RADIUS * cat.scale + 0.1, cat.id))
+        return spot
+    }
+    return null
+  }
+
+  private updateJanitorHeading(cat: Cat, janitor: JanitorState) {
+    const job = janitor.job!
+    if (job.kind === 'outhouse') {
+      const outhouse = this.outhouses[job.outhouseId]
+      const doorway = outhouseDoorway(outhouse)
+      const spot = janitor.spot!
+      // Shut to newcomers once the janitor is nearly there, so long as the
+      // other one stays open, unless this one is past using anyway.
+      if (
+        Math.hypot(cat.x - spot.x, cat.z - spot.z) < 12 &&
+        (outhouse.dirt >= OUTHOUSE_FILTHY ||
+          !this.outhouses.some((other) => other.closed))
+      )
+        outhouse.closed = true
+      if (!this.workerAt(cat, spot, 0.8)) {
+        if (this.elapsed - janitor.since > 90) this.endJanitorJob(cat)
+        return
+      }
+      janitor.facing = Math.atan2(
+        doorway.door.x - cat.x,
+        doorway.door.z - cat.z,
+      )
+      // Whoever is in there gets to finish first.
+      if (outhouse.visitorId !== null || outhouse.doorwayId !== null) return
+      outhouse.closed = true
+      outhouse.doorwayId = cat.id
+      janitor.state = 'entering'
+      janitor.path = [doorway.threshold, doorway.scrub]
+      janitor.timer = 0
+      return
+    }
+    const puddle = this.puddles.find((spot) => spot.id === job.puddleId)
+    if (!puddle) {
+      this.endJanitorJob(cat)
+      return
+    }
+    if (this.elapsed - janitor.since > 50) {
+      // Couldn't get through; leave it for a while, and maybe someone else.
+      this.puddleSkipUntil.set(puddle.id, this.elapsed + 90)
+      this.endJanitorJob(cat)
+      return
+    }
+    const spot = janitor.spot!
+    if (cat.blockedTime > 2 && Math.hypot(cat.x - spot.x, cat.z - spot.z) < 3) {
+      // Someone is in the way: kneel down on another side of it instead.
+      janitor.spot = this.scrubSpot(cat, puddle) ?? spot
+      cat.blockedTime = 0
+    }
+    if (!this.workerAt(cat, janitor.spot!, 0.5)) return
+    // Face it squarely before getting down on their knees.
+    janitor.facing = Math.atan2(puddle.x - cat.x, puddle.z - cat.z)
+    if (Math.cos(janitor.facing - cat.heading) < 0.9) return
+    janitor.state = 'cleaning'
+    janitor.timer = 0
+  }
+
+  private updateJanitorScrubbing(cat: Cat, janitor: JanitorState, dt: number) {
+    const job = janitor.job
+    const puddle =
+      job?.kind === 'puddle'
+        ? this.puddles.find((spot) => spot.id === job.puddleId)
+        : undefined
+    if (!puddle) {
+      this.endJanitorJob(cat)
+      return
+    }
+    janitor.facing = Math.atan2(puddle.x - cat.x, puddle.z - cat.z)
+    // Scrubbing starts once they're down on their knees.
+    if (cat.kneel < 0.9) return
+    janitor.timer += dt
+    puddle.scrubbed = Math.min(1, janitor.timer / PUDDLE_SCRUB_SECONDS)
+    if (janitor.timer < PUDDLE_SCRUB_SECONDS) return
+    this.removePuddle(puddle)
+    this.endJanitorJob(cat)
+    this.emote(cat, 'sparkle')
+  }
+
+  // In through the flap, scoop out the litter tail first, then back out.
+  private scoopOuthouse(cat: Cat, dt: number) {
+    const janitor = cat.janitor!
+    const outhouse =
+      this.outhouses[(janitor.job as { outhouseId: number }).outhouseId]
+    const scooping =
+      janitor.state === 'cleaning' && janitor.timer < OUTHOUSE_SCRUB_SECONDS
+    const kneeling = scooping ? 1 : 0
+    cat.kneel +=
+      Math.sign(kneeling - cat.kneel) *
+      Math.min(Math.abs(kneeling - cat.kneel), dt * 2.2)
+    if (this.followPath(cat, janitor.path, dt)) return
+    if (janitor.state === 'entering') {
+      janitor.state = 'cleaning'
+      janitor.timer = 0
+      return
+    }
+    if (janitor.state === 'cleaning') {
+      this.turnToward(cat, Math.PI, dt)
+      if (scooping) {
+        if (cat.kneel < 0.9) return
+        janitor.timer += dt
+        outhouse.dirt = Math.max(0, outhouse.dirt - dt / OUTHOUSE_SCRUB_SECONDS)
+        return
+      }
+      // Up off their knees, then back out onto the step.
+      if (cat.kneel > 0.01) return
+      outhouse.dirt = 0
+      const doorway = outhouseDoorway(outhouse)
+      janitor.state = 'exiting'
+      janitor.path = [doorway.threshold, doorway.side]
+      return
+    }
+    if (this.canOccupy(cat.x, cat.z, catRadius(cat), cat.id)) {
+      this.endJanitorJob(cat)
+      this.emote(cat, 'sparkle')
+    } else this.stepAside(cat, janitor.path)
+  }
+
+  private endJanitorJob(cat: Cat) {
+    const janitor = cat.janitor!
+    const job = janitor.job
+    if (job?.kind === 'outhouse') {
+      const outhouse = this.outhouses[job.outhouseId]
+      if (outhouse.janitorId === cat.id) {
+        outhouse.janitorId = null
+        outhouse.closed = false
+      }
+      if (outhouse.doorwayId === cat.id) outhouse.doorwayId = null
+    }
+    janitor.state = 'idle'
+    janitor.job = null
+    janitor.spot = null
+    janitor.path = []
+    janitor.timer = 0
+  }
+
+  // Janitors go wherever the mess is, over the bridge in its lanes if need be.
+  private routeJanitor(
+    cat: Cat,
+    dest: Point,
+    travelMode: TravelMode,
+    avoidResidents = false,
+  ) {
+    cat.travelMode = travelMode
+    const radius = CAT_RADIUS * cat.scale
+    // Neighbors already brushing whiskers would otherwise wall in the start,
+    // so the way around them could never be found.
+    const blockers = avoidResidents
+      ? this.nearbyBlockers(cat).map((other) => ({
+          ...other,
+          radius: Math.max(
+            0,
+            Math.min(
+              other.radius,
+              Math.hypot(other.x - cat.x, other.z - cat.z) - radius - 0.12,
+            ),
+          ),
+        }))
+      : []
+    const toWest = isWestBank(dest)
+    let route =
+      isWestBank(cat) !== toWest || isOnBridgeDeck(cat)
+        ? this.bridgeRoute(cat, dest, radius, blockers, !toWest)
+        : null
+    if (!route) {
+      route = findRoute(cat, dest, radius + 0.08, blockers)
+      if (!route.length) route = findRoute(cat, dest, radius)
+      if (!route.length) route = [{ x: dest.x, z: dest.z }]
+    }
+    cat.route = route
+    cat.target = route[0]
+  }
+
+  private removePuddle(puddle: Puddle) {
+    this.puddles.splice(this.puddles.indexOf(puddle), 1)
+    this.puddleSkipUntil.delete(puddle.id)
+  }
+
+  // Makes room for a new puke spot by forgetting the oldest one, unless a
+  // janitor is already scrubbing it.
+  private evictPuddle() {
+    const scrubbing = new Set<number>()
+    for (const cat of this.cats)
+      if (isScrubbing(cat) && cat.janitor!.job?.kind === 'puddle')
+        scrubbing.add(cat.janitor!.job.puddleId)
+    const oldest = this.puddles.find((puddle) => !scrubbing.has(puddle.id))
+    this.removePuddle(oldest ?? this.puddles[0])
+  }
+
   private addToCafeQueue(id: number): void {
     this.cafeQueue.push(id)
     this.cafeQueueSet.add(id)
@@ -4174,6 +5078,20 @@ export class Simulation {
               path: cat.cottage.path.map((point) => ({ ...point })),
             }
           : null,
+        outhouse: cat.outhouse
+          ? {
+              ...cat.outhouse,
+              path: cat.outhouse.path.map((point) => ({ ...point })),
+            }
+          : null,
+        janitor: cat.janitor
+          ? {
+              ...cat.janitor,
+              job: cat.janitor.job ? { ...cat.janitor.job } : null,
+              spot: cat.janitor.spot ? { ...cat.janitor.spot } : null,
+              path: cat.janitor.path.map((point) => ({ ...point })),
+            }
+          : null,
         pose: { ...cat.pose },
         snack: cat.snack ? { ...cat.snack, spot: { ...cat.snack.spot } } : null,
         target: { ...cat.target },
@@ -4223,7 +5141,7 @@ export class Simulation {
         id: cat.id,
         x: cat.x,
         z: cat.z,
-        inside: cat.cottage?.stage === 'inside',
+        inside: isHidden(cat),
       }
     }
     let selectedCat: Cat | null = null
@@ -4240,6 +5158,8 @@ export class Simulation {
           ? { ...selected.cafeCustomer }
           : null,
         cottage: selected.cottage ? { ...selected.cottage } : null,
+        outhouse: selected.outhouse ? { ...selected.outhouse } : null,
+        janitor: selected.janitor ? { ...selected.janitor } : null,
         snack: selected.snack ? { ...selected.snack } : null,
         objective: selected.objective ? { ...selected.objective } : null,
       }
@@ -4254,6 +5174,8 @@ export class Simulation {
             cafeWorker: cat.cafeWorker ? { ...cat.cafeWorker } : null,
             cafeCustomer: cat.cafeCustomer ? { ...cat.cafeCustomer } : null,
             cottage: cat.cottage ? { ...cat.cottage } : null,
+            outhouse: cat.outhouse ? { ...cat.outhouse } : null,
+            janitor: cat.janitor ? { ...cat.janitor } : null,
             snack: cat.snack ? { ...cat.snack } : null,
             objective: cat.objective ? { ...cat.objective } : null,
           }))
